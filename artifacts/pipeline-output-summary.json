@@ -1,0 +1,14 @@
+{
+  "blockHeight": 10000,
+  "txCount": 24,
+  "foldedCommitment": "94aeb146106518472b6e69fd4910ab4d7e1ae4fa5f7aa6abd82c43aa8ed02a09",
+  "pqCommitment": "47219e38a17f5a9afbce2f913884215082e2e9d20528840d73390a09fe5242cb",
+  "hotzoneCount": 6,
+  "densestHotzone": {
+    "id": "hotzone-0",
+    "density": 1044599.1297984082,
+    "tags": [
+      "MIXED_ACTIVITY"
+    ]
+  }
+}

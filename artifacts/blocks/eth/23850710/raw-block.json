@@ -1,0 +1,23 @@
+{
+  "header": {
+    "height": 23850710,
+    "prevStateRoot": "0xf1736f2a57c2e85d0e859739135e564979b0a5cac7c9d415ec2ed7f34f971fef",
+    "newStateRoot": "0x4cd7202c3dd023ce506c70eb48664a16eae648de33827726e7cbf9075fe272a0",
+    "timestamp": 1763768567,
+    "txMerkleRoot": "0x56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421"
+  },
+  "transactions": [],
+  "executionTraces": [],
+  "witnessData": {
+    "bundles": [
+      {
+        "constraintCount": 0,
+        "degree": 2048,
+        "gateCount": 0,
+        "quotientDegree": 4096,
+        "proverLabel": "folding-ingest",
+        "circuitType": "AGGREGATION"
+      }
+    ]
+  }
+}

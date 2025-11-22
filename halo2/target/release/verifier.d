@@ -1,0 +1,1 @@
+/Users/parallel/yysfold/halo2/target/release/verifier: /Users/parallel/yysfold/halo2/src/bin/verifier.rs /Users/parallel/yysfold/halo2/src/circuit.rs /Users/parallel/yysfold/halo2/src/io.rs /Users/parallel/yysfold/halo2/src/keys.rs /Users/parallel/yysfold/halo2/src/lib.rs /Users/parallel/yysfold/halo2/src/public_inputs.rs

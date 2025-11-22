@@ -1,0 +1,1 @@
+AssignedCell<&halo2_axiom::plonk::Assigned<halo2curves_axiom::bn256::Fr>, halo2curves_axiom::bn256::Fr>

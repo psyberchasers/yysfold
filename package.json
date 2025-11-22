@@ -1,0 +1,30 @@
+{
+  "name": "yysfold",
+  "version": "0.1.0",
+  "description": "Block folding plus zk scaffolding prototype",
+  "type": "module",
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "lint": "eslint . --ext .ts || true",
+    "test": "vitest run",
+    "check": "tsc --noEmit -p tsconfig.json",
+    "pipeline": "npm run build && node dist/scripts/runPipeline.js",
+    "halo2:build": "cd halo2 && RUSTUP_TOOLCHAIN=nightly cargo build --release",
+    "halo2:clean": "cd halo2 && cargo clean",
+    "codebook": "npm run build && node dist/scripts/codebookCli.js",
+    "codebook:train": "npm run build && node dist/scripts/trainCodebook.js",
+    "ingest": "npm run build && node dist/scripts/ingestBlocks.js",
+    "ingest:watch": "npm run build && node dist/scripts/watchIngest.js",
+    "ingest:financial": "npm run build && node dist/scripts/ingestFinancial.js"
+  },
+  "dependencies": {
+    "@noble/hashes": "^1.5.0",
+    "better-sqlite3": "^9.4.0",
+    "ethers": "^6.12.1"
+  },
+  "devDependencies": {
+    "typescript": "^5.4.0",
+    "vitest": "^4.0.12",
+    "@types/better-sqlite3": "^7.6.8"
+  }
+}

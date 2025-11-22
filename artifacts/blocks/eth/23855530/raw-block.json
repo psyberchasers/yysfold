@@ -1,0 +1,241 @@
+{
+  "header": {
+    "height": 23855530,
+    "prevStateRoot": "0x1a44b75f47fd9b0ebb04d4d195cd8ca74879128534eeeb6ceb6e95e8ab948f34",
+    "newStateRoot": "0xd16b496a9856cfa27462401996de844da811798d0f49da7f74df2ad5f56497dc",
+    "timestamp": 1763827151,
+    "txMerkleRoot": "0x802cb905c98f51a7ca383aced4837862d9686b4fa207b12a483f95e3869b3be8"
+  },
+  "transactions": [
+    {
+      "hash": "0x72a0b6c75dc4570888f03565e4db8ec9bd757d68894ac3165f111ebc6b4047fc",
+      "amountWei": 0,
+      "amountEth": 0,
+      "fee": 0,
+      "gasUsed": 0,
+      "gasPrice": 10120063706,
+      "nonce": "0x7c040",
+      "status": "success",
+      "chainId": 1,
+      "sender": "0xdbbe3d8c2d2b22a2611c5a94a9a12c2fcd49eb29",
+      "receiver": "0xff00000000000000000000000000000000000480",
+      "contractType": "0x3",
+      "dataSize": 0
+    },
+    {
+      "hash": "0x956576ff782d8ec0aeca11943377ff72285cf976ba7062a77921ab20860be2b2",
+      "amountWei": 0,
+      "amountEth": 0,
+      "fee": 0,
+      "gasUsed": 0,
+      "gasPrice": 10110063706,
+      "nonce": "0x1a5c22",
+      "status": "success",
+      "chainId": 1,
+      "sender": "0x5050f69a9786f081509234f1a7f4684b5e5b76c9",
+      "receiver": "0xff00000000000000000000000000000000008453",
+      "contractType": "0x3",
+      "dataSize": 0
+    },
+    {
+      "hash": "0x1de5a925fcb0f66b1cf0fba9db307e4f8e80b428477035f57f47b188ca1cb6e8",
+      "amountWei": 0,
+      "amountEth": 0,
+      "fee": 0,
+      "gasUsed": 0,
+      "gasPrice": 6102088008,
+      "nonce": "0x0",
+      "status": "success",
+      "chainId": 1,
+      "sender": "0x0e6380ef6e456385ca534c3eea51cd23a28a24fa",
+      "receiver": "0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48",
+      "contractType": "0x0",
+      "dataSize": 0
+    },
+    {
+      "hash": "0xb9ecea5906c88370dda0d8cd86aab74c239c87c0c6f7f0de37db6c582b3edc50",
+      "amountWei": 0,
+      "amountEth": 0,
+      "fee": 0,
+      "gasUsed": 0,
+      "gasPrice": 3111005225,
+      "nonce": "0x22a161",
+      "status": "success",
+      "chainId": 1,
+      "sender": "0x9642b23ed1e01df1092b92641051881a322f5d4e",
+      "receiver": "0x55296f69f40ea6d20e478533c15a6b08b654e758",
+      "contractType": "0x0",
+      "dataSize": 0
+    },
+    {
+      "hash": "0x2ee873c51585f839157cc9ad65972671e989b0a4fb7eb0cfa07e0642446721b0",
+      "amountWei": 0,
+      "amountEth": 0,
+      "fee": 0,
+      "gasUsed": 0,
+      "gasPrice": 3111005225,
+      "nonce": "0x22a162",
+      "status": "success",
+      "chainId": 1,
+      "sender": "0x9642b23ed1e01df1092b92641051881a322f5d4e",
+      "receiver": "0xfaf17849fb05a11a4e233f221bac99ca43fc83f8",
+      "contractType": "0x0",
+      "dataSize": 0
+    },
+    {
+      "hash": "0x8a5822d36a7f7db5a643d26340b31846fbe0af693b2ede17afec8e83346f7b8c",
+      "amountWei": 128324708326480000,
+      "amountEth": 0.12832470832648,
+      "fee": 0,
+      "gasUsed": 0,
+      "gasPrice": 2218651120,
+      "nonce": "0x0",
+      "status": "success",
+      "chainId": 1,
+      "sender": "0xfdc49eafa72a24eb00cc4537c79a654684121ec3",
+      "receiver": "0x8813b86f7fb4cc5f8d160c62be378e6256bed2dd",
+      "contractType": "0x2",
+      "dataSize": 0
+    },
+    {
+      "hash": "0xb4ae46cdcd5e763d24db4b00edb0b80994500990e6ce86badf0950d737daf27e",
+      "amountWei": 197413863750038530,
+      "amountEth": 0.19741386375003853,
+      "fee": 0,
+      "gasUsed": 0,
+      "gasPrice": 2200000000,
+      "nonce": "0x15",
+      "status": "success",
+      "chainId": 1,
+      "sender": "0xc8cd4e2ffa325c4a990eaeca7cebf5b8ceebf583",
+      "receiver": "0x1bac08001d761c303901d5e32273a24c07d3f3da",
+      "contractType": "0x2",
+      "dataSize": 0
+    },
+    {
+      "hash": "0x68a979de4cf722dc38ade48cdd9b0ac5d5035a6369d6a155e279448019e7b2cb",
+      "amountWei": 0,
+      "amountEth": 0,
+      "fee": 0,
+      "gasUsed": 0,
+      "gasPrice": 2100408343,
+      "nonce": "0x413a",
+      "status": "success",
+      "chainId": 1,
+      "sender": "0x655bb677eb340298232b309b90349d7d6331d97c",
+      "receiver": "0xb8506d42ad5fd6a672b42aec94b82846876d458e",
+      "contractType": "0x0",
+      "dataSize": 0
+    }
+  ],
+  "executionTraces": [
+    {
+      "balanceDelta": 0,
+      "storageWrites": 0,
+      "storageReads": 2,
+      "logEvents": 1,
+      "contract": "0xff00000000000000000000000000000000000480",
+      "asset": "ETH",
+      "traceType": "0x3",
+      "gasConsumed": 0,
+      "slotIndex": 0,
+      "reverted": false
+    },
+    {
+      "balanceDelta": 0,
+      "storageWrites": 0,
+      "storageReads": 2,
+      "logEvents": 1,
+      "contract": "0xff00000000000000000000000000000000008453",
+      "asset": "ETH",
+      "traceType": "0x3",
+      "gasConsumed": 0,
+      "slotIndex": 1,
+      "reverted": false
+    },
+    {
+      "balanceDelta": 0,
+      "storageWrites": 0,
+      "storageReads": 2,
+      "logEvents": 1,
+      "contract": "0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48",
+      "asset": "ETH",
+      "traceType": "0x0",
+      "gasConsumed": 0,
+      "slotIndex": 2,
+      "reverted": false
+    },
+    {
+      "balanceDelta": 0,
+      "storageWrites": 0,
+      "storageReads": 2,
+      "logEvents": 1,
+      "contract": "0x55296f69f40ea6d20e478533c15a6b08b654e758",
+      "asset": "ETH",
+      "traceType": "0x0",
+      "gasConsumed": 0,
+      "slotIndex": 3,
+      "reverted": false
+    },
+    {
+      "balanceDelta": 0,
+      "storageWrites": 0,
+      "storageReads": 2,
+      "logEvents": 1,
+      "contract": "0xfaf17849fb05a11a4e233f221bac99ca43fc83f8",
+      "asset": "ETH",
+      "traceType": "0x0",
+      "gasConsumed": 0,
+      "slotIndex": 4,
+      "reverted": false
+    },
+    {
+      "balanceDelta": 128324708326480000,
+      "storageWrites": 0,
+      "storageReads": 2,
+      "logEvents": 1,
+      "contract": "0x8813b86f7fb4cc5f8d160c62be378e6256bed2dd",
+      "asset": "ETH",
+      "traceType": "0x2",
+      "gasConsumed": 0,
+      "slotIndex": 5,
+      "reverted": false
+    },
+    {
+      "balanceDelta": 197413863750038530,
+      "storageWrites": 0,
+      "storageReads": 2,
+      "logEvents": 1,
+      "contract": "0x1bac08001d761c303901d5e32273a24c07d3f3da",
+      "asset": "ETH",
+      "traceType": "0x2",
+      "gasConsumed": 0,
+      "slotIndex": 6,
+      "reverted": false
+    },
+    {
+      "balanceDelta": 0,
+      "storageWrites": 0,
+      "storageReads": 2,
+      "logEvents": 1,
+      "contract": "0xb8506d42ad5fd6a672b42aec94b82846876d458e",
+      "asset": "ETH",
+      "traceType": "0x0",
+      "gasConsumed": 0,
+      "slotIndex": 7,
+      "reverted": false
+    }
+  ],
+  "witnessData": {
+    "bundles": [
+      {
+        "constraintCount": 8000,
+        "degree": 2048,
+        "gateCount": 4000,
+        "quotientDegree": 4096,
+        "proverLabel": "folding-ingest",
+        "circuitType": "AGGREGATION"
+      }
+    ]
+  }
+}

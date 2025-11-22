@@ -1,0 +1,2 @@
+Blake2bWrite<_, halo2curves_axiom::bn256::G1Affine, Challenge255<halo2curves_axiom::bn256::G1Affine>>
+Blake2bWrite<_, halo2curves_axiom::bn256::G1Affine, Challenge255<halo2curves_axiom::bn256::G1Affine>>: Circuit<halo2curves_axiom::bn256::Fr>
