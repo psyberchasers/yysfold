@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { CopyableText } from './CopyableText';
+import { getChainMetadata } from '@/lib/chains';
 
 interface BlockPreviewProps {
   chain: string;
@@ -28,6 +29,7 @@ export function BlockPreview({ chain, height }: BlockPreviewProps) {
   const [loading, setLoading] = useState(false);
   const [data, setData] = useState<BlockApiResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const chainMeta = getChainMetadata(chain);
 
   useEffect(() => {
     if (!open || data) return;
@@ -54,7 +56,7 @@ export function BlockPreview({ chain, height }: BlockPreviewProps) {
       <button
         type="button"
         onClick={() => setOpen((prev) => !prev)}
-        className="px-3 py-1 rounded-full border border-gray-300 text-gray-700 hover:border-gray-500 transition bg-white"
+        className="inline-flex items-center px-3 py-1 border border-gray-300 text-gray-700 text-xs font-medium uppercase tracking-wide hover:border-gray-500 transition bg-white whitespace-nowrap"
       >
         {open ? 'Hide details' : 'Quick view'}
       </button>
@@ -72,7 +74,12 @@ export function BlockPreview({ chain, height }: BlockPreviewProps) {
                   Tags: {data.tags && data.tags.length > 0 ? data.tags.join(', ') : 'None'}
                 </p>
               </div>
-              <TransactionPreview transactions={data.rawBlock?.transactions ?? []} />
+              <TransactionPreview
+                transactions={data.rawBlock?.transactions ?? []}
+                chainSymbol={chainMeta.symbol}
+                minUnit={chainMeta.minUnit}
+                decimals={chainMeta.decimals}
+              />
               <Link
                 href={`/blocks/${chain}/${height}`}
                 className="text-accent underline text-xs mt-3 inline-block"
@@ -87,7 +94,17 @@ export function BlockPreview({ chain, height }: BlockPreviewProps) {
   );
 }
 
-function TransactionPreview({ transactions }: { transactions: Record<string, unknown>[] }) {
+function TransactionPreview({
+  transactions,
+  chainSymbol,
+  minUnit,
+  decimals,
+}: {
+  transactions: Record<string, unknown>[];
+  chainSymbol: string;
+  minUnit: string;
+  decimals: number;
+}) {
   if (transactions.length === 0) {
     return <p className="text-xs text-gray-500">No transaction data.</p>;
   }
@@ -118,7 +135,9 @@ function TransactionPreview({ transactions }: { transactions: Record<string, unk
                     className="text-[10px]"
                   />
                 </td>
-                <td className="px-2 py-1 text-gray-900">{formatEthDisplay(tx)}</td>
+                <td className="px-2 py-1 text-gray-900">
+                  {formatNativeAmount(tx, chainSymbol, minUnit, decimals)}
+                </td>
                 <td className="px-2 py-1 text-gray-600">{String(tx.sender ?? '—')}</td>
                 <td className="px-2 py-1 text-gray-600">{String(tx.receiver ?? '—')}</td>
               </tr>
@@ -130,11 +149,27 @@ function TransactionPreview({ transactions }: { transactions: Record<string, unk
   );
 }
 
-function formatEthDisplay(tx: Record<string, unknown>) {
-  const amountEth = typeof tx.amountEth === 'number' ? tx.amountEth : Number(tx.amount ?? 0) / 1e18;
-  const amountWei = typeof tx.amountWei === 'number' ? tx.amountWei : Number(tx.amount ?? 0);
-  if (!Number.isFinite(amountEth)) return '0 ETH';
-  return `${amountEth.toFixed(6)} ETH (${amountWei} wei)`;
+function formatNativeAmount(
+  tx: Record<string, unknown>,
+  symbol: string,
+  minUnit: string,
+  decimals: number,
+) {
+  const base =
+    typeof tx.amountWei === 'number'
+      ? tx.amountWei
+      : typeof tx.amount === 'number'
+        ? tx.amount
+        : Number(tx.amountWei ?? 0);
+  const native =
+    typeof tx.amountEth === 'number'
+      ? tx.amountEth
+      : Number.isFinite(base)
+        ? base / 10 ** decimals
+        : 0;
+  if (!Number.isFinite(native)) return `0 ${symbol}`;
+  const baseDisplay = Number.isFinite(base) ? Math.round(base) : 0;
+  return `${native.toFixed(6)} ${symbol} (${baseDisplay} ${minUnit})`;
 }
 
 

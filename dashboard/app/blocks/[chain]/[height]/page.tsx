@@ -3,12 +3,18 @@ import Link from 'next/link';
 import { readFileSync } from 'node:fs';
 import { getBlockSummary } from '@/lib/blocks';
 import { HotzoneCard } from '@/components/HotzoneCard';
-import { HypergraphView } from '@/components/HypergraphView';
+import HypergraphView3D from '@/components/HypergraphView3D';
+import { BlockHeatmap } from '@/components/BlockHeatmap';
+import { BlockProjection } from '@/components/BlockProjection';
 import { ProofPanel } from '@/components/ProofPanel';
 import { findLendingTransactions } from '@/lib/tagEvidence';
 import type { LendingTransactionEvidence } from '@/lib/tagEvidence';
 import { CopyableText } from '@/components/CopyableText';
 import { buildArtifactUrl } from '@/lib/artifacts';
+import { getChainMetadata } from '@/lib/chains';
+import { summarizeBehaviorRegime } from '@/lib/regime';
+import { computeAnomalyScore } from '@/lib/anomaly';
+import { describePQComponent } from '@/lib/pqHints';
 
 interface PageProps {
   params: { chain: string; height: string };
@@ -33,6 +39,12 @@ export default async function BlockDetailPage({ params }: PageProps) {
   const transactions = rawBlock.transactions ?? [];
   const executionTraces = rawBlock.executionTraces ?? [];
   const lendingTransactions = findLendingTransactions(record.blockPath, 20);
+  const chainMeta = getChainMetadata(record.chain);
+  const regime = summarizeBehaviorRegime(hotzones);
+  const anomaly = computeAnomalyScore(hotzones);
+
+  const totalHotzoneDensity =
+    hotzones.reduce((sum, zone) => sum + Number(zone?.density ?? 0), 0) || 1;
 
   return (
     <main className="min-h-screen bg-white text-gray-900 px-6 py-10">
@@ -55,7 +67,7 @@ export default async function BlockDetailPage({ params }: PageProps) {
           </div>
         </header>
 
-        <section className="grid gap-4 md:grid-cols-3">
+        <section className="grid gap-4 md:grid-cols-5">
           <DetailCard
             label="Block hash"
             value={record.blockHash}
@@ -68,9 +80,15 @@ export default async function BlockDetailPage({ params }: PageProps) {
             detail={`${foldedVectors.length} folded vectors`}
           />
           <DetailCard
-            label="Hotzones"
+            label="Local hotzones"
             value={hotzones.length}
-            detail={`Avg density ${averageDensity(hotzones).toFixed(2)}`}
+            detail={`Per-block KDE clusters · avg density ${averageDensity(hotzones).toFixed(2)}`}
+          />
+          <DetailCard label="Behavior regime" value={regime.label} detail="Dominant tag mix" />
+          <DetailCard
+            label="Anomaly score"
+            value={anomaly.score.toFixed(2)}
+            detail={`${anomaly.label} · similarity ${anomaly.similarity}%`}
           />
         </section>
 
@@ -88,7 +106,7 @@ export default async function BlockDetailPage({ params }: PageProps) {
             <div>
               <h2 className="text-2xl font-semibold">Hotzone Atlas</h2>
               <p className="text-sm text-gray-500">
-                KDE density clusters for this block
+                Local KDE clusters for this block (global atlas shown below)
               </p>
             </div>
             <span className="text-xs uppercase tracking-wide text-gray-500">
@@ -101,11 +119,13 @@ export default async function BlockDetailPage({ params }: PageProps) {
                 key={zone.id}
                 zone={zone}
                 order={index}
+                chainLabel={chainMeta.symbol}
                 maxDensity={
                   hotzones.length > 0
                     ? Math.max(...hotzones.map((h: any) => h.density))
                     : 1
                 }
+                totalDensity={totalHotzoneDensity}
               />
             ))}
           </div>
@@ -125,43 +145,68 @@ export default async function BlockDetailPage({ params }: PageProps) {
                 Download
               </a>
             </div>
-            <HypergraphView
-              nodes={hypergraph.nodes ?? []}
-              edges={hypergraph.hyperedges ?? []}
-            />
+            <div className="h-[420px] border border-gray-200">
+              <HypergraphView3D
+                nodes={hypergraph.nodes ?? []}
+                edges={hypergraph.hyperedges ?? []}
+              />
+            </div>
           </article>
 
           <article className="bg-white rounded-none border border-gray-200 p-6 flex flex-col gap-4">
-            <h2 className="text-xl font-semibold text-gray-900">Folded vectors</h2>
-            <p className="text-sm text-gray-500">
-              Showing the first 5 folded vectors (dimension{' '}
-              {foldedVectors[0]?.length ?? 0})
-            </p>
-            <div className="space-y-3">
-              {foldedVectors.slice(0, 5).map((vector: number[], index: number) => (
-                <div
-                  key={`vector-${index}`}
-                  className="border border-gray-200 rounded-none p-3 bg-white"
-                >
-                  <div className="text-xs text-gray-500 mb-1">
-                    Vector {index + 1}
-                  </div>
-                  <div className="flex flex-wrap gap-2 text-[11px] font-mono text-accent">
-                    {vector.slice(0, 10).map((value, component) => (
-                      <span key={component}>
-                        c{component}:{value >= 0 ? '+' : ''}
-                        {value.toFixed(3)}
-                      </span>
-                    ))}
-                    {vector.length > 10 && <span>…</span>}
-                  </div>
-                </div>
-              ))}
+            <div className="flex items-center justify-between">
+              <div>
+                <h2 className="text-xl font-semibold text-gray-900">Hotzone heatmap</h2>
+                <p className="text-sm text-gray-500">
+                  Density, bandwidth, and tag presence per zone
+                </p>
+              </div>
+              <span className="text-xs uppercase tracking-wide text-gray-500">
+                Zones {hotzones.length}
+              </span>
             </div>
-            <a className="text-sm text-accent underline" href={buildArtifactUrl(record.summaryPath)}>
-              Download full summary JSON
-            </a>
+            <div className="h-[420px]">
+              <BlockHeatmap hotzones={hotzones} />
+            </div>
           </article>
+        </section>
+
+        <section className="bg-white rounded-none border border-gray-200 p-6 flex flex-col gap-4">
+          <div className="flex items-center justify-between">
+            <div>
+              <h2 className="text-xl font-semibold text-gray-900">Projection (c0 vs c1)</h2>
+              <p className="text-sm text-gray-500">Approximate 4D → 2D scatter of hotzone centroids</p>
+            </div>
+          </div>
+          <div className="h-[360px] border border-gray-200">
+            <BlockProjection hotzones={hotzones} />
+          </div>
+        </section>
+
+        <section className="bg-white rounded-none border border-gray-200 p-6 flex flex-col gap-4">
+          <h2 className="text-xl font-semibold text-gray-900">Folded vectors</h2>
+          <p className="text-sm text-gray-500">
+            Showing the first 5 folded vectors (dimension {foldedVectors[0]?.length ?? 0})
+          </p>
+          <div className="space-y-3">
+            {foldedVectors.slice(0, 5).map((vector: number[], index: number) => (
+              <div key={`vector-${index}`} className="border border-gray-200 rounded-none p-3 bg-white">
+                <div className="text-xs text-gray-500 mb-1">Vector {index + 1}</div>
+                <div className="flex flex-wrap gap-2 text-[11px] font-mono text-accent">
+                  {vector.slice(0, 10).map((value, component) => (
+                    <span key={component} title={describePQComponent(component)}>
+                      c{component}:{value >= 0 ? '+' : ''}
+                      {value.toFixed(3)}
+                    </span>
+                  ))}
+                  {vector.length > 10 && <span>…</span>}
+                </div>
+              </div>
+            ))}
+          </div>
+          <a className="text-sm text-accent underline" href={buildArtifactUrl(record.summaryPath)}>
+            Download full summary JSON
+          </a>
         </section>
 
         <section className="bg-white rounded-none border border-gray-200 p-6">
@@ -195,7 +240,12 @@ export default async function BlockDetailPage({ params }: PageProps) {
                 </p>
               </div>
             </div>
-            <LendingTransactionsTable transactions={lendingTransactions} />
+            <LendingTransactionsTable
+              transactions={lendingTransactions}
+              chainSymbol={chainMeta.symbol}
+              minUnit={chainMeta.minUnit}
+              decimals={chainMeta.decimals}
+            />
           </section>
         )}
 
@@ -211,7 +261,12 @@ export default async function BlockDetailPage({ params }: PageProps) {
               Download raw block
             </a>
           </div>
-          <TransactionTable transactions={transactions.slice(0, 50)} />
+          <TransactionTable
+            transactions={transactions.slice(0, 50)}
+            chainSymbol={chainMeta.symbol}
+            minUnit={chainMeta.minUnit}
+            decimals={chainMeta.decimals}
+          />
           <p className="text-xs text-gray-500 mt-4">
             Execution traces recorded: {executionTraces.length}
           </p>
@@ -265,7 +320,17 @@ function formatTimestamp(ts: number) {
   });
 }
 
-function TransactionTable({ transactions }: { transactions: Record<string, unknown>[] }) {
+function TransactionTable({
+  transactions,
+  chainSymbol,
+  minUnit,
+  decimals,
+}: {
+  transactions: Record<string, unknown>[];
+  chainSymbol: string;
+  minUnit: string;
+  decimals: number;
+}) {
   if (transactions.length === 0) {
     return <p className="text-sm text-gray-500">No transactions were captured for this block.</p>;
   }
@@ -287,10 +352,14 @@ function TransactionTable({ transactions }: { transactions: Record<string, unkno
               <td className="px-3 py-2 font-mono text-xs text-gray-900">
                 <CopyableText value={String(tx.hash ?? '')} label="transaction hash" truncateAt={18} />
               </td>
-              <td className="px-3 py-2 text-gray-900">{formatEthDisplay(tx)}</td>
+              <td className="px-3 py-2 text-gray-900">
+                {formatNativeAmount(tx, chainSymbol, minUnit, decimals)}
+              </td>
               <td className="px-3 py-2 text-gray-600">{String(tx.sender ?? '—')}</td>
               <td className="px-3 py-2 text-gray-600">{String(tx.receiver ?? '—')}</td>
-              <td className="px-3 py-2 text-gray-600">{formatNumber(Number(tx.fee ?? 0))}</td>
+              <td className="px-3 py-2 text-gray-600">
+                {formatNativeFee(Number(tx.fee ?? 0), chainSymbol, minUnit, decimals)}
+              </td>
             </tr>
           ))}
         </tbody>
@@ -299,24 +368,16 @@ function TransactionTable({ transactions }: { transactions: Record<string, unkno
   );
 }
 
-function formatNumber(value: number) {
-  if (!Number.isFinite(value)) return '0';
-  if (Math.abs(value) >= 1_000_000) return `${(value / 1_000_000).toFixed(2)}M`;
-  if (Math.abs(value) >= 1_000) return `${(value / 1_000).toFixed(2)}K`;
-  return value.toFixed(2);
-}
-
-function formatEthDisplay(tx: Record<string, unknown>) {
-  const eth = typeof tx.amountEth === 'number' ? tx.amountEth : Number(tx.amount ?? 0) / 1e18;
-  const wei = typeof tx.amountWei === 'number' ? tx.amountWei : Number(tx.amount ?? 0);
-  if (!Number.isFinite(eth)) return '0 ETH';
-  return `${eth.toFixed(6)} ETH (${wei} wei)`;
-}
-
 function LendingTransactionsTable({
   transactions,
+  chainSymbol,
+  minUnit,
+  decimals,
 }: {
   transactions: LendingTransactionEvidence[];
+  chainSymbol: string;
+  minUnit: string;
+  decimals: number;
 }) {
   return (
     <div className="overflow-auto border border-gray-200 rounded-none">
@@ -325,7 +386,7 @@ function LendingTransactionsTable({
           <tr className="bg-gray-50 text-gray-600 uppercase text-xs">
             <th className="px-3 py-2 text-left">Hash</th>
             <th className="px-3 py-2 text-left">Protocol</th>
-            <th className="px-3 py-2 text-left">Amount (ETH)</th>
+            <th className="px-3 py-2 text-left">Amount ({chainSymbol})</th>
             <th className="px-3 py-2 text-left">Selector</th>
           </tr>
         </thead>
@@ -336,7 +397,9 @@ function LendingTransactionsTable({
                 <CopyableText value={tx.hash} label="transaction hash" truncateAt={18} />
               </td>
               <td className="px-3 py-2 text-gray-700">{tx.protocol}</td>
-              <td className="px-3 py-2 text-gray-900">{formatEthDisplay(tx)}</td>
+              <td className="px-3 py-2 text-gray-900">
+                {formatNativeAmount(tx, chainSymbol, minUnit, decimals)}
+              </td>
               <td className="px-3 py-2 text-gray-600">{tx.functionSelector ?? '—'}</td>
             </tr>
           ))}
@@ -344,5 +407,34 @@ function LendingTransactionsTable({
       </table>
     </div>
   );
+}
+
+function formatNativeAmount(
+  tx: Record<string, unknown>,
+  symbol: string,
+  minUnit: string,
+  decimals: number,
+) {
+  const base =
+    typeof tx.amountWei === 'number'
+      ? tx.amountWei
+      : typeof tx.amount === 'number'
+        ? tx.amount
+        : Number(tx.amountWei ?? 0);
+  const native =
+    typeof tx.amountEth === 'number'
+      ? tx.amountEth
+      : Number.isFinite(base)
+        ? base / 10 ** decimals
+        : 0;
+  if (!Number.isFinite(native)) return `0 ${symbol}`;
+  const baseDisplay = Number.isFinite(base) ? Math.round(base) : 0;
+  return `${native.toFixed(6)} ${symbol} (${baseDisplay} ${minUnit})`;
+}
+
+function formatNativeFee(value: number, symbol: string, minUnit: string, decimals: number) {
+  if (!Number.isFinite(value) || value === 0) return `0 ${symbol}`;
+  const native = value / 10 ** decimals;
+  return `${native.toFixed(6)} ${symbol} (${Math.round(value)} ${minUnit})`;
 }
 

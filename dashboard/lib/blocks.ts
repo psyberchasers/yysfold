@@ -105,12 +105,25 @@ export function searchBlockSummaries(
     .all();
   const normalized = rows.map((row) => normalizeRow(row));
   const lower = query.toLowerCase();
+  const slugged = lower.replace(/[\s\-]+/g, '_');
+  const compact = lower.replace(/[\s\-_]+/g, '');
   return normalized
     .filter((row) => {
       if (row.chain.toLowerCase().includes(lower)) return true;
       if (row.blockHash.toLowerCase().includes(lower)) return true;
       if (row.height.toString().includes(lower)) return true;
-      if (row.tags?.some((tag) => tag.toLowerCase().includes(lower))) return true;
+      if (
+        row.tags?.some((tag) => {
+          const tagLower = tag.toLowerCase();
+          const tagCompact = tagLower.replace(/_/g, '');
+          return (
+            tagLower.includes(lower) ||
+            tagLower.includes(slugged) ||
+            tagCompact.includes(compact)
+          );
+        })
+      )
+        return true;
       return false;
     })
     .slice(0, limit);

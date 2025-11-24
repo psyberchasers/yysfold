@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { BlockPreview } from './BlockPreview';
 import { CopyableText } from './CopyableText';
 import type { LendingTransactionEvidence } from '@/lib/tagEvidence';
+import type { BehaviorMetrics } from '../../shared/behavior';
 
 interface ChatPanelProps {
   sources: string[];
@@ -18,6 +19,7 @@ interface ChatMessage {
   references?: ChatReference[];
   status?: 'loading' | 'error' | 'done';
   primaryReference?: ChatReference | null;
+  atlasReferences?: string[];
 }
 
 interface ChatReference {
@@ -29,6 +31,13 @@ interface ChatReference {
   peakHotzoneDensity?: number | null;
   hotzoneCount?: number | null;
   lendingTransactions?: LendingTransactionEvidence[];
+  behaviorMetrics?: BehaviorMetrics | null;
+  behaviorRegime?: string | null;
+  anomaly?: {
+    score: number;
+    label: string;
+    similarity: number;
+  } | null;
 }
 
 export function ChatPanel({ sources }: ChatPanelProps) {
@@ -94,6 +103,7 @@ export function ChatPanel({ sources }: ChatPanelProps) {
                 tags: data.inferredTags ?? [],
                 references: data.references ?? [],
                 primaryReference: data.primaryReference ?? null,
+                atlasReferences: data.atlasReferences ?? [],
                 status: 'done',
               }
             : message,
@@ -183,6 +193,18 @@ export function ChatPanel({ sources }: ChatPanelProps) {
                 {message.primaryReference.hotzoneCount != null && (
                   <span>Hotzones detected: {message.primaryReference.hotzoneCount}</span>
                 )}
+                {message.primaryReference.behaviorMetrics && (
+                  <BehaviorSummary behavior={message.primaryReference.behaviorMetrics} />
+                )}
+              {message.primaryReference.behaviorRegime && (
+                <span>Regime: {message.primaryReference.behaviorRegime}</span>
+              )}
+              {message.primaryReference.anomaly && (
+                <span>
+                  Anomaly {message.primaryReference.anomaly.score.toFixed(2)} (
+                  {message.primaryReference.anomaly.label})
+                </span>
+              )}
                 {message.primaryReference.lendingTransactions &&
                   message.primaryReference.lendingTransactions.length > 0 && (
                     <div className="space-y-1 pt-1">
@@ -218,6 +240,16 @@ export function ChatPanel({ sources }: ChatPanelProps) {
                 </div>
               </div>
             )}
+            {message.atlasReferences && message.atlasReferences.length > 0 && (
+              <div className="flex flex-col gap-2">
+                <p className="text-xs uppercase tracking-wide text-gray-500">Atlas insights</p>
+                <ul className="list-disc list-inside text-xs text-gray-600 space-y-1">
+                  {message.atlasReferences.map((line, index) => (
+                    <li key={`${message.id}-atlas-${index}`}>{line}</li>
+                  ))}
+                </ul>
+              </div>
+            )}
           </article>
         ))}
       </div>
@@ -250,6 +282,19 @@ function ReferenceCard({ reference }: { reference: ChatReference }) {
           Lending tx: {reference.lendingTransactions.length}
         </span>
       )}
+      {reference.behaviorRegime && (
+        <span className="text-[10px] text-gray-600">Regime: {reference.behaviorRegime}</span>
+      )}
+      {reference.anomaly && (
+        <span className="text-[10px] text-gray-600">
+          Anomaly {reference.anomaly.score.toFixed(2)} ({reference.anomaly.label})
+        </span>
+      )}
+      {reference.behaviorMetrics && (
+        <div className="text-[10px] text-gray-600">
+          <BehaviorSummary behavior={reference.behaviorMetrics} compact />
+        </div>
+      )}
       <div className="flex flex-wrap gap-1 text-[10px] text-accent">
         {reference.tags.slice(0, 4).map((tag) => (
           <span key={tag} className="px-2 py-0.5 border border-gray-300 rounded-full">
@@ -274,6 +319,63 @@ function formatEth(value: number) {
   if (Math.abs(value) >= 1) return value.toFixed(2);
   if (Math.abs(value) >= 0.01) return value.toFixed(3);
   return value.toExponential(2);
+}
+
+function BehaviorSummary({
+  behavior,
+  compact = false,
+}: {
+  behavior: BehaviorMetrics;
+  compact?: boolean;
+}) {
+  const stats: string[] = [];
+  if (behavior.dexGasShare > 0.05) {
+    stats.push(`${formatPercent(behavior.dexGasShare)} gas DEX`);
+  }
+  if (behavior.nftGasShare > 0.05) {
+    stats.push(`${formatPercent(behavior.nftGasShare)} gas NFT`);
+  }
+  if (behavior.lendingVolumeWei > 0) {
+    stats.push(`Lending ${formatWei(behavior.lendingVolumeWei)}`);
+  }
+  if (behavior.highFeeTxCount > 0) {
+    stats.push(`${behavior.highFeeTxCount} high-fee tx`);
+  }
+  const top = behavior.topContracts?.[0];
+  return (
+    <div className={`space-y-1 ${compact ? '' : 'pt-1'}`}>
+      {behavior.dominantFlow && (
+        <span className={`${compact ? '' : 'text-[11px]'} text-gray-700`}>
+          Dominant: {behavior.dominantFlow.replace(/_/g, ' ')}
+        </span>
+      )}
+      {stats.length > 0 && (
+        <span className="block text-gray-600">{stats.join(' · ')}</span>
+      )}
+      {top && (
+        <span className="block text-gray-500">
+          Top: {top.label ?? truncateHash(top.address)} ({top.txCount} tx)
+        </span>
+      )}
+    </div>
+  );
+}
+
+function formatPercent(value: number) {
+  return `${(value * 100).toFixed(0)}%`;
+}
+
+function formatWei(value: number) {
+  if (!Number.isFinite(value) || value <= 0) return '0';
+  const eth = value / 1e18;
+  if (eth >= 1) return `${eth.toFixed(2)} native`;
+  return `${eth.toFixed(4)} native`;
+}
+
+function truncateHash(value: string) {
+  if (!value) return 'n/a';
+  if (value.length <= 10) return value;
+  return `${value.slice(0, 6)}…${value.slice(-4)}`;
 }
 
 

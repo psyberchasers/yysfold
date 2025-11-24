@@ -9,11 +9,16 @@ interface HotzoneCardProps {
     center?: number[];
   };
   maxDensity: number;
+  totalDensity: number;
   order: number;
+  chainLabel?: string;
 }
 
-export function HotzoneCard({ zone, maxDensity, order }: HotzoneCardProps) {
-  const pct = Math.min(zone.density / maxDensity, 1);
+export function HotzoneCard({ zone, maxDensity, totalDensity, order, chainLabel }: HotzoneCardProps) {
+  const normalizedShare =
+    totalDensity > 0 ? Math.max(0, Math.min(zone.density / totalDensity, 1)) : 0;
+  const densityPercentile =
+    maxDensity > 0 ? Math.round((zone.density / maxDensity) * 100) : 0;
   const topComponents = (zone.center ?? [])
     .map((value, index) => ({ value, index }))
     .sort((a, b) => Math.abs(b.value) - Math.abs(a.value))
@@ -22,7 +27,10 @@ export function HotzoneCard({ zone, maxDensity, order }: HotzoneCardProps) {
   return (
     <div className="border border-gray-200 rounded-none p-4 bg-white flex flex-col gap-4">
       <div className="flex items-center justify-between text-xs uppercase tracking-wide text-gray-500">
-        <span>Hotzone {order + 1}</span>
+        <span>
+          Hotzone {order + 1}
+          {chainLabel ? ` · ${chainLabel}` : ''}
+        </span>
         <span className="font-mono text-gray-900">{zone.id}</span>
       </div>
       <div className="flex flex-col gap-3">
@@ -30,10 +38,13 @@ export function HotzoneCard({ zone, maxDensity, order }: HotzoneCardProps) {
           <div>
             <p className="text-xs text-gray-500 uppercase">Density</p>
             <p className="text-xl font-semibold text-accent">{zone.density.toFixed(2)}</p>
+            <p className="text-[11px] text-gray-500">≈ P{densityPercentile}</p>
           </div>
           <div>
-            <p className="text-xs text-gray-500 uppercase">Share</p>
-            <p className="text-lg font-semibold text-gray-900">{(pct * 100).toFixed(1)}%</p>
+            <p className="text-xs text-gray-500 uppercase">Block mass</p>
+            <p className="text-lg font-semibold text-gray-900">
+              {(normalizedShare * 100).toFixed(1)}%
+            </p>
           </div>
           <div>
             <p className="text-xs text-gray-500 uppercase">Radius</p>
