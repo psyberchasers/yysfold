@@ -1,9 +1,9 @@
 ## YYSFOLD Delivery Plan
 
 ### Phase 0 — Foundations (Week 1)
-- [ ] Stand up dual ingestion adapters (ETH, AVAX) that emit `RawBlock` JSON.
-- [ ] Persist block metadata into `index.db` / `artifacts/` (raw, summary, hotzones, proof placeholders).
-- [ ] Define the verification contract (public inputs, commitments) and stub `/api/verify`.
+- [x] Stand up dual ingestion adapters (ETH, AVAX) that emit `RawBlock` JSON.
+- [x] Persist block metadata into `index.db` / `artifacts/` (raw, summary, hotzones, proof placeholders).
+- [x] Define the verification contract (public inputs, commitments) and stub `/api/verify`.
 
 ### Phase 1 — Folding + PQ + KDE Pipeline (Weeks 2–3)
 - [ ] Implement deterministic folding (Fiat–Shamir challenge + vector folding logic).
