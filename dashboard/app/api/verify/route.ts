@@ -1,3 +1,53 @@
+import { readFileSync } from 'node:fs';
+import { NextResponse } from 'next/server';
+import { getBlockSummary } from '@/lib/blocks';
+
+interface VerifyRequest {
+  chain?: string;
+  height?: number;
+  blockHash?: string;
+  foldedCommitment?: string;
+  pqCommitment?: string;
+  codebookRoot?: string;
+}
+
+export async function POST(request: Request) {
+  const body = (await request.json().catch(() => ({}))) as VerifyRequest;
+  const { chain, height, blockHash, foldedCommitment, pqCommitment, codebookRoot } = body;
+  if (!chain || !Number.isFinite(height)) {
+    return NextResponse.json(
+      { error: 'Provide chain and height in the verification payload.' },
+      { status: 400 },
+    );
+  }
+  const record = getBlockSummary(chain, Number(height));
+  if (!record) {
+    return NextResponse.json(
+      { error: `No block summary for ${chain} #${height}` },
+      { status: 404 },
+    );
+  }
+
+  const summary = JSON.parse(readFileSync(record.summaryPath, 'utf-8')) as any;
+  const expected = {
+    blockHash: record.blockHash,
+    foldedCommitment: summary?.commitments?.foldedCommitment ?? null,
+    pqCommitment: summary?.commitments?.pqCommitment ?? null,
+    codebookRoot: summary?.codebookRoot ?? null,
+  };
+  const mismatches: string[] = [];
+  if (blockHash && blockHash !== expected.blockHash) mismatches.push('blockHash');
+  if (foldedCommitment && foldedCommitment !== expected.foldedCommitment)
+    mismatches.push('foldedCommitment');
+  if (pqCommitment && pqCommitment !== expected.pqCommitment) mismatches.push('pqCommitment');
+  if (codebookRoot && codebookRoot !== expected.codebookRoot) mismatches.push('codebookRoot');
+
+  return NextResponse.json({
+    verified: mismatches.length === 0,
+    mismatches,
+    expected,
+  });
+}
 import { NextResponse } from 'next/server';
 import crypto from 'node:crypto';
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
