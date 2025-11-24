@@ -1,5 +1,5 @@
 import { blake3 } from '@noble/hashes/blake3';
-import { FoldedBlock, PQCode } from './types.js';
+import { FoldedBlock, PQCode, PQCodebook } from './types.js';
 
 export function hashFoldedBlock(block: FoldedBlock): string {
   const payload = JSON.stringify(block.foldedVectors);
@@ -11,8 +11,16 @@ export function hashPQCode(code: PQCode): string {
   return toHex(blake3(Buffer.from(payload)));
 }
 
-export function hashCodebookRoot(centroids: number[][][]): string {
-  const payload = JSON.stringify(centroids);
+export function hashCodebookRoot(
+  input: number[][][] | PQCodebook,
+): string {
+  const payload = Array.isArray(input)
+    ? JSON.stringify({ centroids: input })
+    : JSON.stringify({
+        centroids: input.centroids,
+        normalization: input.normalization,
+        errorBound: input.errorBound,
+      });
   return toHex(blake3(Buffer.from(payload)));
 }
 

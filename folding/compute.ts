@@ -3,6 +3,7 @@ import { vectorizeBlock, VectorizeOptions } from './vectorize.js';
 import { foldVectors, FoldingOptions } from './fold.js';
 import { pqEncode, PQEncodeOptions } from './pq.js';
 import { hashFoldedBlock, hashPQCode } from './commit.js';
+import { normalizeVectors } from './normalization.js';
 
 export interface ComputeFoldedBlockOptions {
   vectorize?: VectorizeOptions;
@@ -21,7 +22,17 @@ export function computeFoldedBlock(
     txCount: raw.transactions.length,
     timestamp: raw.header.timestamp,
   });
-  const pqCode = pqEncode(foldedBlock, codebook, options.pq);
+  const normalizedBlock = codebook.normalization
+    ? {
+        ...foldedBlock,
+        foldedVectors: normalizeVectors(foldedBlock.foldedVectors, codebook.normalization),
+      }
+    : foldedBlock;
+  const pqOptions: PQEncodeOptions = {
+    ...options.pq,
+    errorBound: options.pq?.errorBound ?? codebook.errorBound,
+  };
+  const pqCode = pqEncode(normalizedBlock, codebook, pqOptions);
   const foldedCommitment = hashFoldedBlock(foldedBlock);
   const pqCommitment = hashPQCode(pqCode);
 

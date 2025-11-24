@@ -19,6 +19,7 @@ import { BlockPreview } from '../components/BlockPreview';
 import { buildArtifactUrl } from '@/lib/artifacts';
 import { CopyableText } from '../components/CopyableText';
 import { MetricsChart } from '../components/MetricsChart';
+import PQResidualHistogram from '../components/PQResidualHistogram';
 import { summarizeBehaviorRegime } from '@/lib/regime';
 import { computeAnomalyScore } from '@/lib/anomaly';
 
@@ -61,7 +62,11 @@ export default async function Page({ searchParams }: PageProps) {
   const chainOptions = ['ALL', ...chains];
   const latestChainMeta = getChainMetadata(summary.chain);
   const regime = summarizeBehaviorRegime(hotzones);
-  const anomaly = computeAnomalyScore(hotzones);
+  const anomaly = computeAnomalyScore({
+    hotzones,
+    pqResidualStats: payload.pqResidualStats,
+    tagVector: summary.semanticTags ?? [],
+  });
   const filteredBlocks =
     chainFilter && chainFilter.toLowerCase() !== 'all'
       ? recent.filter((block) => block.chain === chainFilter)
@@ -150,9 +155,15 @@ export default async function Page({ searchParams }: PageProps) {
             </div>
             <div className="flex items-center gap-2">
               <span className="text-gray-500 uppercase tracking-wide text-xs">Anomaly</span>
-              <span className="font-semibold text-gray-900">
-                {anomaly.score.toFixed(2)} ({anomaly.label})
-              </span>
+              <div className="flex flex-col">
+                <span className="font-semibold text-gray-900">
+                  {anomaly.score.toFixed(2)} ({anomaly.label})
+                </span>
+                <span className="text-xs text-gray-500">
+                  Density {anomaly.breakdown.density.detail} · PQ {anomaly.breakdown.pqResidual.detail} · Tags{' '}
+                  {anomaly.breakdown.tags.detail}
+                </span>
+              </div>
             </div>
           </div>
         </section>
@@ -213,6 +224,10 @@ export default async function Page({ searchParams }: PageProps) {
 
         <section>
           <MetricsChart />
+        </section>
+
+        <section>
+          <PQResidualHistogram />
         </section>
 
         <section className="grid gap-6 lg:grid-cols-2">
@@ -533,7 +548,7 @@ function buildAnalyticsCards(
   summary: StoredBlockSummary,
   payload: any,
   hotzones: any[],
-) : AnalyticCard[] {
+): AnalyticCard[] {
   const densities = hotzones.map((hz: any) => hz.density);
   const peakDensity =
     densities.length > 0 ? Math.max(...densities) : 0;
@@ -548,6 +563,7 @@ function buildAnalyticsCards(
   );
   const foldedVectors = payload.foldedBlock?.foldedVectors ?? [];
   const vectorDim = foldedVectors[0]?.length ?? 0;
+  const pqStats = payload.pqResidualStats ?? null;
 
   return [
     {
@@ -574,6 +590,13 @@ function buildAnalyticsCards(
       label: 'Relative age',
       value: formatRelativeAge(summary.timestamp),
       detail: formatTimestamp(summary.timestamp),
+    },
+    {
+      label: 'PQ residual p95',
+      value: pqStats?.p95 != null ? Number(pqStats.p95).toFixed(3) : 'n/a',
+      detail: pqStats
+        ? `avg ${Number(pqStats.average ?? 0).toFixed(3)} · max ${Number(pqStats.max ?? 0).toFixed(3)}`
+        : 'No PQ stats recorded',
     },
   ];
 }

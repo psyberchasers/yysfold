@@ -41,7 +41,11 @@ export default async function BlockDetailPage({ params }: PageProps) {
   const lendingTransactions = findLendingTransactions(record.blockPath, 20);
   const chainMeta = getChainMetadata(record.chain);
   const regime = summarizeBehaviorRegime(hotzones);
-  const anomaly = computeAnomalyScore(hotzones);
+  const anomaly = computeAnomalyScore({
+    hotzones,
+    pqResidualStats: payload.pqResidualStats,
+    tagVector: summary.semanticTags ?? [],
+  });
 
   const totalHotzoneDensity =
     hotzones.reduce((sum, zone) => sum + Number(zone?.density ?? 0), 0) || 1;
@@ -88,7 +92,7 @@ export default async function BlockDetailPage({ params }: PageProps) {
           <DetailCard
             label="Anomaly score"
             value={anomaly.score.toFixed(2)}
-            detail={`${anomaly.label} · similarity ${anomaly.similarity}%`}
+            detail={`${anomaly.label} · similarity ${anomaly.similarity}% · density ${anomaly.breakdown.density.detail} · PQ ${anomaly.breakdown.pqResidual.detail}`}
           />
         </section>
 

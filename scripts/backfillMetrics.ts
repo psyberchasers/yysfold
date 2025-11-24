@@ -1,6 +1,7 @@
 import { readFileSync, mkdirSync, existsSync } from 'node:fs';
 import path from 'node:path';
 import Database from 'better-sqlite3';
+import { summarizeResiduals } from '../analytics/residuals.js';
 
 interface BlockRow {
   chain: string;
@@ -58,6 +59,15 @@ function main() {
       tags TEXT NOT NULL
     );
   `);
+  metricsDb.exec(`
+    CREATE TABLE IF NOT EXISTS pq_residual_samples (
+      chain TEXT NOT NULL,
+      height INTEGER NOT NULL,
+      timestamp INTEGER NOT NULL,
+      vector_index INTEGER NOT NULL,
+      residual REAL NOT NULL
+    );
+  `);
   ensureBehaviorColumns(metricsDb);
 
   const rows = sourceDb
@@ -87,9 +97,12 @@ function main() {
       lending_tx_count,
       bridge_tx_count,
       dominant_flow,
-      top_contracts
+      top_contracts,
+      pq_error_avg,
+      pq_error_max,
+      pq_error_p95
     )
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `);
 
   let inserted = 0;
@@ -108,6 +121,8 @@ function main() {
           : 0;
       const tags = summary.semanticTags ?? safeParseTags(row.tags);
       const timestampSeconds = normalizeTimestamp(row.timestamp);
+      const residualValues = extractResidualValues(summary);
+      const residualStats = summarizeResiduals(residualValues);
       const behavior = normalizeBehaviorMetrics(summary.behaviorMetrics);
       insert.run(
         row.chain,
@@ -128,6 +143,9 @@ function main() {
         behavior.bridgeTxCount,
         behavior.dominantFlow ?? null,
         JSON.stringify(behavior.topContracts ?? []),
+        residualStats.average,
+        residualStats.max,
+        residualStats.p95,
       );
       const hotzoneStmt = metricsDb.prepare(
         `
@@ -147,6 +165,17 @@ function main() {
           JSON.stringify(hotzone.semanticTags ?? []),
         );
       });
+      if (residualValues.length > 0) {
+        const residualStmt = metricsDb.prepare(
+          `
+          INSERT INTO pq_residual_samples (chain, height, timestamp, vector_index, residual)
+          VALUES (?, ?, ?, ?, ?)
+        `,
+        );
+        residualValues.forEach((value, index) => {
+          residualStmt.run(row.chain, row.height, timestampSeconds, index, Number(value ?? 0));
+        });
+      }
       inserted += 1;
     } catch (error) {
       console.warn(`Failed to backfill block ${row.chain} #${row.height}:`, error);
@@ -171,6 +200,9 @@ function ensureBehaviorColumns(db: Database.Database) {
     "ALTER TABLE block_metrics ADD COLUMN bridge_tx_count INTEGER NOT NULL DEFAULT 0;",
     "ALTER TABLE block_metrics ADD COLUMN dominant_flow TEXT;",
     "ALTER TABLE block_metrics ADD COLUMN top_contracts TEXT NOT NULL DEFAULT '[]';",
+    "ALTER TABLE block_metrics ADD COLUMN pq_error_avg REAL NOT NULL DEFAULT 0;",
+    "ALTER TABLE block_metrics ADD COLUMN pq_error_max REAL NOT NULL DEFAULT 0;",
+    "ALTER TABLE block_metrics ADD COLUMN pq_error_p95 REAL NOT NULL DEFAULT 0;",
   ];
   statements.forEach((sql) => {
     try {
@@ -195,6 +227,20 @@ function normalizeBehaviorMetrics(raw: any) {
     dominantFlow: typeof raw?.dominantFlow === 'string' ? raw.dominantFlow : null,
     topContracts: Array.isArray(raw?.topContracts) ? raw.topContracts : [],
   };
+}
+
+function extractResidualValues(summary: any): number[] {
+  if (!summary) return [];
+  if (Array.isArray(summary.pqResiduals)) {
+    return summary.pqResiduals.map((value: unknown) => Number(value ?? 0));
+  }
+  if (Array.isArray(summary.pqResiduals?.values)) {
+    return summary.pqResiduals.values.map((value: unknown) => Number(value ?? 0));
+  }
+  if (Array.isArray(summary.pqCode?.residuals)) {
+    return summary.pqCode.residuals.map((value: unknown) => Number(value ?? 0));
+  }
+  return [];
 }
 
 function safeParseTags(raw: string) {

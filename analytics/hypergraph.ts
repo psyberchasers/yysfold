@@ -6,8 +6,8 @@ export interface HypergraphOptions {
 }
 
 const DEFAULT_OPTIONS: Required<HypergraphOptions> = {
-  densityThreshold: 1e-4,
-  maxEdgeSize: 3,
+  densityThreshold: 5e-5,
+  maxEdgeSize: 4,
 };
 
 export function buildHypergraph(hotzones: Hotzone[], options: HypergraphOptions = {}): Hypergraph {
@@ -33,6 +33,28 @@ export function buildHypergraph(hotzones: Hotzone[], options: HypergraphOptions 
             computeWeight(hotzones[i], hotzones[k])) / 3;
           if (weight >= opts.densityThreshold * 1.5) {
             hyperedges.push({ nodes: [i, j, k], weight });
+          }
+        }
+      }
+    }
+  }
+
+  if (opts.maxEdgeSize >= 4) {
+    for (let a = 0; a < hotzones.length; a += 1) {
+      for (let b = a + 1; b < hotzones.length; b += 1) {
+        for (let c = b + 1; c < hotzones.length; c += 1) {
+          for (let d = c + 1; d < hotzones.length; d += 1) {
+            const weight =
+              (computeWeight(hotzones[a], hotzones[b]) +
+                computeWeight(hotzones[a], hotzones[c]) +
+                computeWeight(hotzones[a], hotzones[d]) +
+                computeWeight(hotzones[b], hotzones[c]) +
+                computeWeight(hotzones[b], hotzones[d]) +
+                computeWeight(hotzones[c], hotzones[d])) /
+              6;
+            if (weight >= opts.densityThreshold * 2) {
+              hyperedges.push({ nodes: [a, b, c, d], weight });
+            }
           }
         }
       }

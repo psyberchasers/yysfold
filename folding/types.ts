@@ -37,15 +37,23 @@ export interface FoldedBlock {
   metadata: FoldedBlockMetadata;
 }
 
+export interface NormalizationStats {
+  mean: number[];
+  stdDev: number[];
+}
+
 export interface PQCodebook {
   centroids: number[][][];
   subvectorDim: number;
   numCentroids: number;
   numSubspaces: number;
+  normalization?: NormalizationStats;
+  errorBound?: number;
 }
 
 export interface PQCode {
   indices: number[][];
+  residuals?: number[];
 }
 
 export interface Commitments {

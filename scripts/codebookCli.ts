@@ -60,7 +60,7 @@ function generateCodebook(args: GenerateArgs): CodebookArtifact {
     scale,
   });
   assertCodebookConsistency(codebook);
-  const codebookRoot = hashCodebookRoot(codebook.centroids);
+  const codebookRoot = hashCodebookRoot(codebook);
   return {
     version: args.version,
     description: args.description,

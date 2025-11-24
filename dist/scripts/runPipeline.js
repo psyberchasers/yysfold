@@ -28,7 +28,7 @@ async function main() {
         pq: { errorBound: cli.pqError, strict: cli.pqStrict },
     });
     const backend = buildBackend(cli);
-    const codebookRoot = hashCodebookRoot(codebook.centroids);
+    const codebookRoot = hashCodebookRoot(codebook);
     const provingKeyPath = cli.backend === 'halo2' ? resolve(process.cwd(), 'artifacts/halo2-proving.json') : 'mock.zkey';
     const verificationKeyPath = cli.backend === 'halo2'
         ? resolve(process.cwd(), 'artifacts/halo2-verifier.json')
@@ -41,8 +41,13 @@ async function main() {
         codebookRoot,
     };
     const proof = await proveFoldedBlock(rawBlock, artifact, codebook, params, backend);
-    const hotzones = detectHotzones(artifact.pqCode, codebook);
-    const hypergraph = buildHypergraph(hotzones);
+    const hotzones = detectHotzones(artifact.pqCode, codebook, {
+        maxZones: 18,
+    });
+    const hypergraph = buildHypergraph(hotzones, {
+        densityThreshold: 5e-5,
+        maxEdgeSize: 4,
+    });
     const output = {
         blockHeight: rawBlock.header.height,
         txCount: rawBlock.transactions.length,

@@ -167,7 +167,7 @@ function readSummaryInsights(summaryPath: string):
       hotzoneCount: number;
       behavior: BehaviorMetrics | null;
       behaviorRegime: string | null;
-      anomaly: { score: number; label: string; similarity: number } | null;
+      anomaly: ReturnType<typeof computeAnomalyScore> | null;
     }
   | null {
   try {
@@ -180,7 +180,11 @@ function readSummaryInsights(summaryPath: string):
       0,
     );
     const regime = summarizeBehaviorRegime(hotzones);
-    const anomaly = computeAnomalyScore(hotzones);
+    const anomaly = computeAnomalyScore({
+      hotzones,
+      pqResidualStats: summary.pqResidualStats,
+      tagVector: summary.semanticTags ?? [],
+    });
     return {
       peakHotzoneDensity,
       hotzoneCount,
@@ -220,6 +224,14 @@ function formatBlockContext(block: StoredBlockSummary) {
     }
     if (insights.behaviorRegime) {
       parts.push(`Regime: ${insights.behaviorRegime}`);
+    }
+    if (insights.anomaly) {
+      const detail = insights.anomaly.breakdown
+        ? `density ${insights.anomaly.breakdown.density.detail} · PQ ${insights.anomaly.breakdown.pqResidual.detail}`
+        : '';
+      parts.push(
+        `Anomaly ${insights.anomaly.score.toFixed(2)} (${insights.anomaly.label})${detail ? ` – ${detail}` : ''}`,
+      );
     }
   }
   parts.push(`Summary: ${block.summaryPath}`);

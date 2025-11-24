@@ -30,6 +30,9 @@ export function assertCodebookConsistency(codebook) {
             }
         });
     });
+    if (codebook.normalization) {
+        validateNormalization(codebook.normalization, codebook.subvectorDim * codebook.numSubspaces);
+    }
 }
 export function loadCodebookFromFile(path) {
     const raw = JSON.parse(readFileSync(path, 'utf-8'));
@@ -42,4 +45,9 @@ export function saveCodebookToFile(path, codebook, metadata) {
     const payload = metadata ? { metadata, codebook } : codebook;
     mkdirSync(dirname(path), { recursive: true });
     writeFileSync(path, JSON.stringify(payload, null, 2), 'utf-8');
+}
+function validateNormalization(stats, dimension) {
+    if (stats.mean.length !== dimension || stats.stdDev.length !== dimension) {
+        throw new Error(`Normalization stats dimension mismatch (expected ${dimension})`);
+    }
 }

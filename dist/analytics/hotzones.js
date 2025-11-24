@@ -1,11 +1,27 @@
 import { pqDecode } from '../folding/pq.js';
 const DEFAULT_OPTIONS = {
     bandwidth: 0.15,
-    threshold: 0.05,
-    maxZones: 8,
+    threshold: 0.02,
+    maxZones: 16,
+    contextTags: [],
 };
+const CONTEXTUAL_TAGS = [
+    'AML_ALERT',
+    'AML_RULE',
+    'DEX_ACTIVITY',
+    'NFT_ACTIVITY',
+    'HIGH_FEE',
+    'LENDING_ACTIVITY',
+    'BRIDGE_ACTIVITY',
+    'MEV_ACTIVITY',
+    'LARGE_VALUE',
+];
 export function detectHotzones(code, codebook, options = {}) {
-    const opts = { ...DEFAULT_OPTIONS, ...options };
+    const opts = {
+        ...DEFAULT_OPTIONS,
+        ...options,
+        contextTags: options.contextTags ?? DEFAULT_OPTIONS.contextTags,
+    };
     const vectors = pqDecode(code, codebook);
     const densities = vectors.map((vector, index) => ({
         index,
@@ -18,7 +34,7 @@ export function detectHotzones(code, codebook, options = {}) {
         center: vectors[entry.index],
         density: entry.density,
         radius: opts.bandwidth * 2,
-        semanticTags: deriveSemanticTags(vectors[entry.index]),
+        semanticTags: enrichSemanticTags(deriveSemanticTags(vectors[entry.index]), opts.contextTags ?? []),
     }));
 }
 function kernelDensity(target, vectors, bandwidth) {
@@ -39,14 +55,35 @@ function distance(a, b) {
     return Math.sqrt(sum);
 }
 function deriveSemanticTags(vector) {
-    const tags = [];
-    if ((vector[0] ?? 0) > 0.7)
-        tags.push('HIGH_VALUE');
-    if ((vector[1] ?? 0) > 0.6)
-        tags.push('FEE_INTENSIVE');
-    if ((vector[5] ?? 0) > 0.5)
-        tags.push('TIME_CLUSTER');
-    if (tags.length === 0)
-        tags.push('MIXED_ACTIVITY');
-    return tags;
+    const tags = new Set();
+    const get = (index) => vector[index] ?? 0;
+    if (get(0) > 0.65)
+        tags.add('HIGH_VALUE');
+    if (get(1) > 0.55)
+        tags.add('FEE_INTENSIVE');
+    if (get(2) > 0.55)
+        tags.add('DEX_ACTIVITY');
+    if (get(3) > 0.55)
+        tags.add('NFT_ACTIVITY');
+    if (get(4) > 0.45)
+        tags.add('BRIDGE_ACTIVITY');
+    if (get(5) > 0.5)
+        tags.add('TIME_CLUSTER');
+    if (get(6) > 0.5)
+        tags.add('LENDING_ACTIVITY');
+    if (get(7) > 0.5)
+        tags.add('AML_ALERT');
+    if (get(8) > 0.55)
+        tags.add('MEV_ACTIVITY');
+    if (get(9) < -0.45)
+        tags.add('VOLATILITY_CRUSH');
+    if (tags.size === 0)
+        tags.add('MIXED_ACTIVITY');
+    return Array.from(tags);
+}
+function enrichSemanticTags(base, contextTags) {
+    const contextualMatches = contextTags
+        .filter((tag) => CONTEXTUAL_TAGS.some((signal) => tag.toUpperCase().includes(signal)))
+        .slice(0, 3);
+    return Array.from(new Set([...base, ...contextualMatches]));
 }

@@ -1,0 +1,229 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "YYSFOLD Block Fingerprint",
+  "description": "Canonical attested fingerprint for a single block or financial batch",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "chain",
+    "height",
+    "blockHash",
+    "commitments",
+    "foldedBlock",
+    "pqCode",
+    "hotzones",
+    "behaviorMetrics",
+    "anomaly",
+    "proof"
+  ],
+  "properties": {
+    "chain": {
+      "type": "string",
+      "description": "Source identifier (e.g., eth, avax, fx, equities)"
+    },
+    "height": {
+      "type": "integer",
+      "description": "Block height or adapter-specific batch number"
+    },
+    "blockHash": {
+      "type": "string",
+      "description": "Canonical block hash (or adapter batch commitment)"
+    },
+    "timestamp": {
+      "type": "integer",
+      "description": "Unix timestamp (seconds) for the block or batch"
+    },
+    "commitments": {
+      "type": "object",
+      "required": ["foldedCommitment", "pqCommitment", "codebookRoot"],
+      "properties": {
+        "foldedCommitment": {
+          "type": "string",
+          "description": "BLAKE3 hash of folded vectors"
+        },
+        "pqCommitment": {
+          "type": "string",
+          "description": "BLAKE3 hash of PQ indices"
+        },
+        "codebookRoot": {
+          "type": "string",
+          "description": "BLAKE3 hash of the codebook (centroids + normalization + bound)"
+        }
+      }
+    },
+    "foldedBlock": {
+      "type": "object",
+      "required": ["foldedVectors", "metadata"],
+      "properties": {
+        "foldedVectors": {
+          "type": "array",
+          "items": {
+            "type": "array",
+            "items": {
+              "type": "number"
+            }
+          },
+          "description": "Deterministic folded vector set (mean, variance, component projections)"
+        },
+        "metadata": {
+          "type": "object",
+          "properties": {
+            "blockHeight": { "type": "integer" },
+            "txCount": { "type": "integer" },
+            "timestamp": { "type": ["integer", "null"] },
+            "notes": { "type": ["string", "null"] }
+          }
+        }
+      }
+    },
+    "pqCode": {
+      "type": "object",
+      "required": ["indices"],
+      "properties": {
+        "indices": {
+          "type": "array",
+          "items": {
+            "type": "array",
+            "items": { "type": "integer" }
+          },
+          "description": "Product-quantized indices (per vector · per subspace)"
+        }
+      }
+    },
+    "pqResiduals": {
+      "type": "array",
+      "items": { "type": "number" },
+      "description": "Per-vector L2 reconstruction error"
+    },
+    "pqResidualStats": {
+      "type": "object",
+      "properties": {
+        "average": { "type": "number" },
+        "p95": { "type": "number" },
+        "max": { "type": "number" },
+        "count": { "type": "integer" }
+      }
+    },
+    "hotzones": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["id", "density", "center"],
+        "properties": {
+          "id": { "type": "string" },
+          "density": { "type": "number" },
+          "radius": { "type": ["number", "null"] },
+          "center": {
+            "type": "array",
+            "items": { "type": "number" }
+          },
+          "semanticTags": {
+            "type": "array",
+            "items": { "type": "string" }
+          },
+          "share": { "type": ["number", "null"] },
+          "percentile": { "type": ["number", "null"] }
+        }
+      }
+    },
+    "hypergraph": {
+      "type": "object",
+      "properties": {
+        "nodes": { "type": "array" },
+        "hyperedges": { "type": "array" }
+      },
+      "description": "Optional hypergraph adjacency emitted for block-level view"
+    },
+    "behaviorMetrics": {
+      "type": "object",
+      "description": "Behavioral telemetry derived from raw block data",
+      "properties": {
+        "dexGasShare": { "type": "number" },
+        "nftGasShare": { "type": "number" },
+        "lendingVolumeWei": { "type": "number" },
+        "bridgeVolumeWei": { "type": "number" },
+        "dexTxCount": { "type": "integer" },
+        "nftTxCount": { "type": "integer" },
+        "lendingTxCount": { "type": "integer" },
+        "bridgeTxCount": { "type": "integer" },
+        "highFeeTxCount": { "type": "integer" },
+        "dominantFlow": { "type": ["string", "null"] },
+        "topContracts": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "address": { "type": "string" },
+              "label": { "type": ["string", "null"] },
+              "txCount": { "type": "integer" }
+            }
+          }
+        }
+      }
+    },
+    "anomaly": {
+      "type": "object",
+      "required": ["score", "label", "similarity"],
+      "properties": {
+        "score": { "type": "number" },
+        "label": { "type": "string" },
+        "similarity": { "type": "number" },
+        "breakdown": {
+          "type": "object",
+          "properties": {
+            "density": {
+              "type": "object",
+              "properties": {
+                "component": { "type": "number" },
+                "detail": { "type": "string" }
+              }
+            },
+            "pqResidual": {
+              "type": "object",
+              "properties": {
+                "component": { "type": "number" },
+                "detail": { "type": "string" }
+              }
+            },
+            "tags": {
+              "type": "object",
+              "properties": {
+                "component": { "type": "number" },
+                "detail": { "type": "string" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "behaviorRegime": {
+      "type": "string",
+      "description": "Dominant regime label inferred from semantic tags"
+    },
+    "proof": {
+      "type": "object",
+      "required": ["proofHex", "publicInputs"],
+      "properties": {
+        "proofHex": {
+          "type": "string",
+          "description": "Halo2 proof bytes encoded as hex"
+        },
+        "publicInputs": {
+          "type": "object",
+          "description": "Public inputs passed into the Halo2 circuit"
+        }
+      }
+    },
+    "artifacts": {
+      "type": "object",
+      "description": "Optional URLs for raw artifacts exposed via api/artifacts",
+      "properties": {
+        "block": { "type": "string" },
+        "summary": { "type": "string" },
+        "hotzones": { "type": "string" },
+        "proof": { "type": "string" }
+      }
+    }
+  }
+}
+

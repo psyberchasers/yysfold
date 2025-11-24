@@ -44,7 +44,7 @@ export function buildPublicInputs(args: {
 }
 
 export function buildCodebookCommitment(codebook: PQCodebook): string {
-  return hashCodebookRoot(codebook.centroids);
+  return hashCodebookRoot(codebook);
 }
 
 export function buildPQCommitments(pqCode: PQCode): string {

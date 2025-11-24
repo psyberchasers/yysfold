@@ -1,5 +1,11 @@
 import { spawn } from 'node:child_process';
 import { setTimeout as sleep } from 'node:timers/promises';
+import { fileURLToPath } from 'node:url';
+import path from 'node:path';
+
+const SCRIPT_DIR = path.dirname(fileURLToPath(import.meta.url));
+const INGEST_SCRIPT = path.join(SCRIPT_DIR, 'ingestBlocks.js');
+const ATLAS_SCRIPT = path.join(SCRIPT_DIR, 'buildAtlas.js');
 
 interface WatchOptions {
   chains: string[];
@@ -7,6 +13,7 @@ interface WatchOptions {
   intervalMs: number;
   maxFailures: number;
   env: Record<string, string>;
+  atlasIntervalMs: number;
 }
 
 async function main() {
@@ -16,12 +23,17 @@ async function main() {
     `[watch-ingest] Starting watcher (chains=${options.chains.join(',')} batch=${options.batchSize} interval=${options.intervalMs}ms)`,
   );
   let failureCount = 0;
+  let lastAtlasBuild = 0;
 
   while (true) {
     const start = Date.now();
     try {
-      await runIngest(batchCommand(options), options.env);
+      await runIngest(ingestCommand(options), options.env);
       failureCount = 0;
+      if (shouldBuildAtlas(lastAtlasBuild, options.atlasIntervalMs)) {
+        await runAtlasBuild(options.env);
+        lastAtlasBuild = Date.now();
+      }
     } catch (error) {
       failureCount += 1;
       // eslint-disable-next-line no-console
@@ -44,11 +56,12 @@ async function main() {
 
 function parseArgs(argv: string[]): WatchOptions {
   const options: WatchOptions = {
-    chains: ['eth'],
+    chains: ['eth', 'avax'],
     batchSize: 25,
     intervalMs: 60_000,
     maxFailures: 5,
     env: {},
+    atlasIntervalMs: 15 * 60_000,
   };
   argv.forEach((token) => {
     if (token.startsWith('--chains=')) {
@@ -63,6 +76,8 @@ function parseArgs(argv: string[]): WatchOptions {
       options.intervalMs = Number.parseInt(token.slice('--interval='.length), 10);
     } else if (token.startsWith('--max-failures=')) {
       options.maxFailures = Number.parseInt(token.slice('--max-failures='.length), 10);
+    } else if (token.startsWith('--atlas-interval=')) {
+      options.atlasIntervalMs = Number.parseInt(token.slice('--atlas-interval='.length), 10);
     } else if (token.startsWith('--env=')) {
       token
         .slice('--env='.length)
@@ -78,21 +93,27 @@ function parseArgs(argv: string[]): WatchOptions {
   return options;
 }
 
-function batchCommand(options: WatchOptions) {
-  return [
-    'npm',
-    'run',
-    'ingest',
-    '--',
-    `--chains=${options.chains.join(',')}`,
-    `--count=${options.batchSize}`,
-  ];
+function ingestCommand(options: WatchOptions) {
+  return ['node', INGEST_SCRIPT, `--chains=${options.chains.join(',')}`, `--count=${options.batchSize}`];
 }
 
-function runIngest(args: string[], env: Record<string, string>): Promise<void> {
+function runIngest(args: string[], env: Record<string, string>) {
+  return spawnAndWait('[watch-ingest] Ingest', args, env);
+}
+
+async function runAtlasBuild(env: Record<string, string>) {
+  if (env.ATLAS_DISABLED === '1') {
+    // eslint-disable-next-line no-console
+    console.log('[watch-ingest] Skipping atlas build (ATLAS_DISABLED=1).');
+    return;
+  }
+  await spawnAndWait('[watch-ingest] Atlas', ['node', ATLAS_SCRIPT], env);
+}
+
+function spawnAndWait(label: string, args: string[], env: Record<string, string>): Promise<void> {
   return new Promise((resolvePromise, rejectPromise) => {
     // eslint-disable-next-line no-console
-    console.log('[watch-ingest] Spawning:', args.join(' '));
+    console.log(`${label}: ${args.join(' ')}`);
     const child = spawn(args[0], args.slice(1), {
       stdio: 'inherit',
       env: { ...process.env, ...env },
@@ -102,10 +123,20 @@ function runIngest(args: string[], env: Record<string, string>): Promise<void> {
       if (code === 0) {
         resolvePromise();
       } else {
-        rejectPromise(new Error(`Ingest exited with code ${code}`));
+        rejectPromise(new Error(`${label} exited with code ${code}`));
       }
     });
   });
+}
+
+function shouldBuildAtlas(lastBuild: number, intervalMs: number) {
+  if (intervalMs <= 0) {
+    return false;
+  }
+  if (lastBuild === 0) {
+    return true;
+  }
+  return Date.now() - lastBuild >= intervalMs;
 }
 
 if (import.meta.url === `file://${process.argv[1]}`) {

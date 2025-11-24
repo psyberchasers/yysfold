@@ -1,3 +1,4 @@
+import 'dotenv/config';
 import { mkdirSync, writeFileSync, appendFileSync, existsSync } from 'node:fs';
 import { dirname, resolve, join } from 'node:path';
 import { JsonRpcProvider, toQuantity } from 'ethers';
@@ -5,25 +6,39 @@ import Database from 'better-sqlite3';
 import { computeFoldedBlock } from '../folding/compute.js';
 import { createDeterministicCodebook, loadCodebookFromFile } from '../folding/codebook.js';
 import { detectHotzones } from '../analytics/hotzones.js';
+import { resolveHotzoneOptions } from '../analytics/hotzoneConfig.js';
 import { buildHypergraph } from '../analytics/hypergraph.js';
 import { proveFoldedBlock } from '../zk/witnessBuilder.js';
 import { createHalo2Backend } from '../zk/halo2Backend.js';
 import { hashCodebookRoot } from '../folding/commit.js';
 import { deriveRawBlockTags } from '../analytics/tags.js';
+import { computeBehaviorMetrics } from '../analytics/blockMetrics.js';
+import { summarizeResiduals } from '../analytics/residuals.js';
 const CHAINS = {
     eth: {
         id: 'eth',
         label: 'Ethereum Mainnet',
-        rpcUrl: process.env.ETH_RPC_URL ?? 'https://eth.llamarpc.com',
+        rpcUrls: buildRpcList(process.env.ETH_RPC_URL, [
+            'https://eth.llamarpc.com',
+            'https://rpc.ankr.com/eth',
+            'https://eth-mainnet.public.blastapi.io',
+        ]),
         defaultCount: 1,
     },
     avax: {
         id: 'avax',
         label: 'Avalanche C-Chain',
-        rpcUrl: process.env.AVAX_RPC_URL ?? 'https://avalanche.public-rpc.com',
+        rpcUrls: buildRpcList(process.env.AVAX_RPC_URL, [
+            'https://avalanche.public-rpc.com',
+            'https://rpc.ankr.com/avalanche',
+            'https://avax.meowrpc.com',
+        ]),
         defaultCount: 1,
     },
 };
+function buildRpcList(primary, fallbacks) {
+    return [primary, ...fallbacks].filter((url) => Boolean(url && url.trim().length > 0));
+}
 function loadActiveCodebook() {
     const configuredPath = process.env.CODEBOOK_PATH ?? resolve('artifacts', 'codebooks', 'latest.json');
     if (existsSync(configuredPath)) {
@@ -43,8 +58,9 @@ function loadActiveCodebook() {
 async function main() {
     const options = parseArgs(process.argv.slice(2));
     const db = initDatabase();
+    const metricsDb = initMetricsDatabase();
     const codebook = loadActiveCodebook();
-    const codebookRoot = hashCodebookRoot(codebook.centroids);
+    const codebookRoot = hashCodebookRoot(codebook);
     const halo2 = createHalo2Context();
     for (const chainId of options.chains) {
         const chain = CHAINS[chainId];
@@ -53,8 +69,9 @@ async function main() {
             console.warn(`Skipping unknown chain "${chainId}"`);
             continue;
         }
-        const provider = new JsonRpcProvider(chain.rpcUrl);
-        const latest = await provider.getBlockNumber();
+        const connection = await connectProvider(chain);
+        let provider = connection.provider;
+        const latest = connection.latest;
         const targetCount = options.count || chain.defaultCount;
         for (let offset = 0; offset < targetCount; offset += 1) {
             const height = latest - offset;
@@ -67,7 +84,24 @@ async function main() {
             }
             // eslint-disable-next-line no-console
             console.log(`[${chain.id}] Fetching block ${height}`);
-            const block = (await provider.send('eth_getBlockByNumber', [toQuantity(height), true]));
+            let block = null;
+            try {
+                block = await fetchBlock(provider, height);
+            }
+            catch (error) {
+                // eslint-disable-next-line no-console
+                console.warn(`[${chain.id}] RPC error while fetching block ${height}: ${formatError(error)}. Rotating endpoint.`);
+                try {
+                    const retryConnection = await connectProvider(chain);
+                    provider = retryConnection.provider;
+                    block = await fetchBlock(provider, height);
+                }
+                catch (retryError) {
+                    // eslint-disable-next-line no-console
+                    console.error(`[${chain.id}] Retry failed for block ${height}: ${formatError(retryError)}`);
+                    continue;
+                }
+            }
             if (!block) {
                 // eslint-disable-next-line no-console
                 console.warn(`Failed to fetch block ${height} for ${chain.id}`);
@@ -76,6 +110,7 @@ async function main() {
             const rawBlock = blockToRawBlock(chain.id, block);
             const paths = writeArtifacts(chain.id, height, rawBlock);
             const summary = await computeSummary(rawBlock, chain.id, height, codebook, codebookRoot, halo2);
+            const rawTags = summary.rawTags ?? [];
             saveSummary(paths.summaryPath, summary);
             saveHotzones(paths.hotzonesPath, summary.hotzones, summary.hypergraph);
             saveProof(paths.proofPath, summary.proofHex);
@@ -92,9 +127,32 @@ async function main() {
             });
             // eslint-disable-next-line no-console
             console.log(`[${chain.id}] Stored block ${height} (commit=${summary.commitments.foldedCommitment.slice(0, 10)}...)`);
+            recordMetrics(metricsDb, {
+                chain: chain.id,
+                height,
+                timestamp: rawBlock.header.timestamp ?? block.timestamp ?? Math.floor(Date.now() / 1000),
+                hotzones: summary.hotzones ?? [],
+                semanticTags: summary.semanticTags ?? [],
+                rawTags,
+                behaviorMetrics: summary.behaviorMetrics,
+                pqResidualStats: summary.pqResidualStats,
+            });
+            recordHotzoneSamples(metricsDb, {
+                chain: chain.id,
+                height,
+                timestamp: rawBlock.header.timestamp ?? block.timestamp ?? Math.floor(Date.now() / 1000),
+                hotzones: summary.hotzones ?? [],
+            });
+            recordPQResidualSamples(metricsDb, {
+                chain: chain.id,
+                height,
+                timestamp: rawBlock.header.timestamp ?? block.timestamp ?? Math.floor(Date.now() / 1000),
+                residuals: summary.pqResiduals ?? [],
+            });
         }
     }
     db.close();
+    metricsDb.close();
 }
 function parseArgs(argv) {
     const options = {
@@ -117,6 +175,40 @@ function parseArgs(argv) {
         }
     });
     return options;
+}
+async function connectProvider(chain) {
+    const errors = [];
+    for (const url of chain.rpcUrls) {
+        try {
+            const provider = new JsonRpcProvider(url);
+            const latest = await provider.getBlockNumber();
+            // eslint-disable-next-line no-console
+            console.log(`[${chain.id}] Connected to RPC ${url}`);
+            return { provider, latest };
+        }
+        catch (error) {
+            const message = formatError(error);
+            errors.push(`${url}: ${message}`);
+            // eslint-disable-next-line no-console
+            console.warn(`[${chain.id}] RPC ${url} failed: ${message}`);
+        }
+    }
+    throw new Error(`[${chain.id}] All RPC endpoints failed. ${errors.join(' | ')}`);
+}
+async function fetchBlock(provider, height) {
+    return (await provider.send('eth_getBlockByNumber', [toQuantity(height), true]));
+}
+function formatError(error) {
+    if (error instanceof Error)
+        return error.message;
+    if (typeof error === 'string')
+        return error;
+    try {
+        return JSON.stringify(error);
+    }
+    catch {
+        return 'unknown error';
+    }
 }
 function createHalo2Context() {
     const proverCommand = process.env.HALO2_PROVER_BIN ?? resolve('halo2', 'target', 'release', 'prover');
@@ -169,6 +261,84 @@ function initDatabase() {
     }
     return db;
 }
+function initMetricsDatabase() {
+    const dbPath = resolve('artifacts', 'telemetry.db');
+    mkdirSync(dirname(dbPath), { recursive: true });
+    const db = new Database(dbPath);
+    db.exec(`
+    CREATE TABLE IF NOT EXISTS block_metrics (
+      chain TEXT NOT NULL,
+      height INTEGER NOT NULL,
+      timestamp INTEGER NOT NULL,
+      hotzone_count INTEGER NOT NULL,
+      peak_density REAL NOT NULL,
+      avg_density REAL NOT NULL,
+      tags TEXT NOT NULL,
+      dex_gas_share REAL NOT NULL DEFAULT 0,
+      nft_gas_share REAL NOT NULL DEFAULT 0,
+      lending_volume_wei REAL NOT NULL DEFAULT 0,
+      bridge_volume_wei REAL NOT NULL DEFAULT 0,
+      high_fee_tx INTEGER NOT NULL DEFAULT 0,
+      dex_tx_count INTEGER NOT NULL DEFAULT 0,
+      nft_tx_count INTEGER NOT NULL DEFAULT 0,
+      lending_tx_count INTEGER NOT NULL DEFAULT 0,
+      bridge_tx_count INTEGER NOT NULL DEFAULT 0,
+      dominant_flow TEXT,
+      top_contracts TEXT NOT NULL DEFAULT '[]',
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      UNIQUE(chain, height)
+    );
+  `);
+    db.exec(`
+    CREATE TABLE IF NOT EXISTS hotzone_samples (
+      chain TEXT NOT NULL,
+      height INTEGER NOT NULL,
+      timestamp INTEGER NOT NULL,
+      hotzone_id TEXT NOT NULL,
+      density REAL NOT NULL,
+      radius REAL NOT NULL,
+      vector TEXT NOT NULL,
+      tags TEXT NOT NULL
+    );
+  `);
+    db.exec(`
+    CREATE TABLE IF NOT EXISTS pq_residual_samples (
+      chain TEXT NOT NULL,
+      height INTEGER NOT NULL,
+      timestamp INTEGER NOT NULL,
+      vector_index INTEGER NOT NULL,
+      residual REAL NOT NULL
+    );
+  `);
+    ensureBehaviorColumns(db);
+    return db;
+}
+function ensureBehaviorColumns(db) {
+    const statements = [
+        "ALTER TABLE block_metrics ADD COLUMN dex_gas_share REAL NOT NULL DEFAULT 0;",
+        "ALTER TABLE block_metrics ADD COLUMN nft_gas_share REAL NOT NULL DEFAULT 0;",
+        "ALTER TABLE block_metrics ADD COLUMN lending_volume_wei REAL NOT NULL DEFAULT 0;",
+        "ALTER TABLE block_metrics ADD COLUMN bridge_volume_wei REAL NOT NULL DEFAULT 0;",
+        "ALTER TABLE block_metrics ADD COLUMN high_fee_tx INTEGER NOT NULL DEFAULT 0;",
+        "ALTER TABLE block_metrics ADD COLUMN dex_tx_count INTEGER NOT NULL DEFAULT 0;",
+        "ALTER TABLE block_metrics ADD COLUMN nft_tx_count INTEGER NOT NULL DEFAULT 0;",
+        "ALTER TABLE block_metrics ADD COLUMN lending_tx_count INTEGER NOT NULL DEFAULT 0;",
+        "ALTER TABLE block_metrics ADD COLUMN bridge_tx_count INTEGER NOT NULL DEFAULT 0;",
+        "ALTER TABLE block_metrics ADD COLUMN dominant_flow TEXT;",
+        "ALTER TABLE block_metrics ADD COLUMN top_contracts TEXT NOT NULL DEFAULT '[]';",
+        "ALTER TABLE block_metrics ADD COLUMN pq_error_avg REAL NOT NULL DEFAULT 0;",
+        "ALTER TABLE block_metrics ADD COLUMN pq_error_max REAL NOT NULL DEFAULT 0;",
+        "ALTER TABLE block_metrics ADD COLUMN pq_error_p95 REAL NOT NULL DEFAULT 0;",
+    ];
+    statements.forEach((sql) => {
+        try {
+            db.exec(sql);
+        }
+        catch {
+            // column exists
+        }
+    });
+}
 function hasRecord(db, chain, height) {
     const stmt = db.prepare('SELECT 1 FROM block_summaries WHERE chain = ? AND height = ?');
     return stmt.get(chain, height) !== undefined;
@@ -180,6 +350,89 @@ function insertRecord(db, record) {
   `);
     stmt.run(record.chain, record.height, record.blockHash, record.timestamp, record.blockPath, record.summaryPath, record.hotzonesPath, record.proofPath, JSON.stringify(record.tags ?? []));
 }
+function recordMetrics(db, payload) {
+    const peakDensity = payload.hotzones.reduce((acc, hz) => Math.max(acc, Number(hz?.density ?? 0)), 0);
+    const avgDensity = payload.hotzones.length > 0
+        ? payload.hotzones.reduce((acc, hz) => acc + Number(hz?.density ?? 0), 0) /
+            payload.hotzones.length
+        : 0;
+    const behavior = payload.behaviorMetrics ?? emptyBehaviorMetrics();
+    const pqStats = payload.pqResidualStats ?? summarizeResiduals([]);
+    const stmt = db.prepare(`
+    INSERT OR REPLACE INTO block_metrics (
+      chain,
+      height,
+      timestamp,
+      hotzone_count,
+      peak_density,
+      avg_density,
+      tags,
+      dex_gas_share,
+      nft_gas_share,
+      lending_volume_wei,
+      bridge_volume_wei,
+      high_fee_tx,
+      dex_tx_count,
+      nft_tx_count,
+      lending_tx_count,
+      bridge_tx_count,
+      dominant_flow,
+      top_contracts,
+      pq_error_avg,
+      pq_error_max,
+      pq_error_p95
+    )
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `);
+    const timestampSeconds = Number.isFinite(Number(payload.timestamp))
+        ? Math.floor(Number(payload.timestamp))
+        : Math.floor(Date.now() / 1000);
+    stmt.run(payload.chain, payload.height, timestampSeconds, payload.hotzones.length, peakDensity, avgDensity, JSON.stringify(Array.from(new Set([...(payload.semanticTags ?? []), ...payload.rawTags]))), behavior.dexGasShare, behavior.nftGasShare, behavior.lendingVolumeWei, behavior.bridgeVolumeWei, behavior.highFeeTxCount, behavior.dexTxCount, behavior.nftTxCount, behavior.lendingTxCount, behavior.bridgeTxCount, behavior.dominantFlow ?? null, JSON.stringify(behavior.topContracts ?? []), pqStats.average, pqStats.max, pqStats.p95);
+}
+function recordHotzoneSamples(db, payload) {
+    if (!payload.hotzones || payload.hotzones.length === 0)
+        return;
+    const stmt = db.prepare(`
+    INSERT INTO hotzone_samples (chain, height, timestamp, hotzone_id, density, radius, vector, tags)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+  `);
+    const timestampSeconds = Number.isFinite(payload.timestamp)
+        ? Math.floor(payload.timestamp)
+        : Math.floor(Date.now() / 1000);
+    payload.hotzones.forEach((hotzone, index) => {
+        stmt.run(payload.chain, payload.height, timestampSeconds, hotzone.id ?? `hotzone-${index}`, Number(hotzone.density ?? 0), Number(hotzone.radius ?? 0), JSON.stringify(hotzone.center ?? []), JSON.stringify(hotzone.semanticTags ?? []));
+    });
+}
+function recordPQResidualSamples(db, payload) {
+    if (!payload.residuals || payload.residuals.length === 0)
+        return;
+    const stmt = db.prepare(`
+    INSERT INTO pq_residual_samples (chain, height, timestamp, vector_index, residual)
+    VALUES (?, ?, ?, ?, ?)
+  `);
+    const timestampSeconds = Number.isFinite(payload.timestamp)
+        ? Math.floor(payload.timestamp)
+        : Math.floor(Date.now() / 1000);
+    payload.residuals.forEach((value, index) => {
+        stmt.run(payload.chain, payload.height, timestampSeconds, index, Number(value ?? 0));
+    });
+}
+function emptyBehaviorMetrics() {
+    return {
+        totalGas: 0,
+        dexGasShare: 0,
+        nftGasShare: 0,
+        lendingVolumeWei: 0,
+        bridgeVolumeWei: 0,
+        dexTxCount: 0,
+        nftTxCount: 0,
+        lendingTxCount: 0,
+        bridgeTxCount: 0,
+        highFeeTxCount: 0,
+        dominantFlow: null,
+        topContracts: [],
+    };
+}
 export function blockToRawBlock(chainId, block) {
     const transactions = block.transactions ?? [];
     return {
@@ -190,23 +443,30 @@ export function blockToRawBlock(chainId, block) {
             timestamp: Number(block.timestamp),
             txMerkleRoot: block.transactionsRoot ?? '',
         },
-        transactions: transactions.map((tx) => ({
-            hash: tx.hash ?? '',
-            amountWei: Number(tx.value ?? 0n),
-            amountEth: Number(tx.value ?? 0n) / 1e18,
-            fee: tx.gasPrice && tx.gasLimit
-                ? Number(tx.gasPrice ?? 0n) * Number(tx.gasLimit ?? 0n)
-                : 0,
-            gasUsed: Number(tx.gasLimit ?? 0n),
-            gasPrice: Number(tx.gasPrice ?? 0n),
-            nonce: tx.nonce ?? 0,
-            status: 'success',
-            chainId: Number(tx.chainId ?? 0n),
-            sender: tx.from ?? '',
-            receiver: tx.to ?? '',
-            contractType: tx.type ?? 'LEGACY',
-            dataSize: tx.data ? tx.data.length : 0,
-        })),
+        transactions: transactions.map((tx) => {
+            const gasLimit = parseQuantity(tx.gas ?? tx.gasLimit ?? 0);
+            const gasUsed = parseQuantity(tx.gasUsed ?? gasLimit);
+            const gasPrice = parseQuantity(tx.gasPrice ?? 0);
+            const fee = gasPrice * gasUsed;
+            const selector = extractFunctionSelector(tx);
+            const dataField = readInputData(tx);
+            return {
+                hash: tx.hash ?? '',
+                amountWei: parseQuantity(tx.value ?? 0),
+                amountEth: parseQuantity(tx.value ?? 0) / 1e18,
+                fee,
+                gasUsed,
+                gasPrice,
+                nonce: tx.nonce ?? 0,
+                status: 'success',
+                chainId: Number(tx.chainId ?? 0n),
+                sender: tx.from ?? '',
+                receiver: tx.to ?? '',
+                contractType: tx.type ?? 'LEGACY',
+                dataSize: dataField.length,
+                functionSelector: selector,
+            };
+        }),
         executionTraces: transactions.map((tx, index) => ({
             balanceDelta: Number(tx.value ?? 0n),
             storageWrites: tx.data ? tx.data.length / 64 : 0,
@@ -233,6 +493,41 @@ export function blockToRawBlock(chainId, block) {
         },
     };
 }
+function parseQuantity(value) {
+    if (typeof value === 'number')
+        return value;
+    if (typeof value === 'bigint')
+        return Number(value);
+    if (typeof value === 'string') {
+        if (value.startsWith('0x')) {
+            return Number.parseInt(value, 16);
+        }
+        const parsed = Number(value);
+        return Number.isFinite(parsed) ? parsed : 0;
+    }
+    return 0;
+}
+function extractFunctionSelector(tx) {
+    const record = tx;
+    if (typeof record['functionSelector'] === 'string' && record['functionSelector'].length >= 10) {
+        return record['functionSelector'].slice(0, 10).toLowerCase();
+    }
+    if (typeof record['input'] === 'string' && record['input'].startsWith('0x') && record['input'].length >= 10) {
+        return record['input'].slice(0, 10).toLowerCase();
+    }
+    if (typeof record['data'] === 'string' && record['data'].startsWith('0x') && record['data'].length >= 10) {
+        return record['data'].slice(0, 10).toLowerCase();
+    }
+    return null;
+}
+function readInputData(tx) {
+    const record = tx;
+    if (typeof record['input'] === 'string')
+        return record['input'];
+    if (typeof record['data'] === 'string')
+        return record['data'];
+    return '';
+}
 function writeArtifacts(chain, height, rawBlock) {
     const dir = resolve('artifacts', 'blocks', chain, `${height}`);
     mkdirSync(dir, { recursive: true });
@@ -245,9 +540,20 @@ function writeArtifacts(chain, height, rawBlock) {
 }
 async function computeSummary(rawBlock, chain, height, codebook, codebookRoot, halo2) {
     const artifact = computeFoldedBlock(rawBlock, codebook);
-    const hotzones = detectHotzones(artifact.pqCode, codebook);
-    const hypergraph = buildHypergraph(hotzones);
+    const pqResiduals = artifact.pqCode.residuals ?? [];
+    const pqResidualStats = summarizeResiduals(pqResiduals);
     const rawTags = deriveRawBlockTags(rawBlock);
+    const behaviorMetrics = computeBehaviorMetrics(rawBlock);
+    const requestedZones = Number(process.env.HOTZONE_LIMIT ?? 18);
+    const maxZones = Number.isFinite(requestedZones) && requestedZones > 0 ? requestedZones : 18;
+    const hotzones = detectHotzones(artifact.pqCode, codebook, resolveHotzoneOptions(chain, {
+        maxZones,
+        contextTags: rawTags,
+    }));
+    const hypergraph = buildHypergraph(hotzones, {
+        densityThreshold: 5e-5,
+        maxEdgeSize: 4,
+    });
     const semanticTags = Array.from(new Set([
         ...rawTags,
         ...hotzones.flatMap((hz) => hz.semanticTags ?? []),
@@ -266,10 +572,13 @@ async function computeSummary(rawBlock, chain, height, codebook, codebookRoot, h
         commitments: artifact.commitments,
         foldedBlock: artifact.foldedBlock,
         pqCode: artifact.pqCode,
+        pqResiduals,
+        pqResidualStats,
         hotzones,
         hypergraph,
         rawTags,
         semanticTags,
+        behaviorMetrics,
         publicInputs: proof.publicInputs,
         proofHex: Buffer.from(proof.proofBytes).toString('hex'),
     };

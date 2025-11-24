@@ -42,6 +42,14 @@ impl ParsedPublicInputs {
             hex_to_field(&self.codebook_root)?,
         ])
     }
+
+    pub fn commitment_fields(&self) -> Result<[Fr; 3]> {
+        Ok([
+            hex_to_field(&self.folded_commitment)?,
+            hex_to_field(&self.pq_commitment)?,
+            hex_to_field(&self.codebook_root)?,
+        ])
+    }
 }
 
 fn hex_to_field(hex_str: &str) -> Result<Fr> {

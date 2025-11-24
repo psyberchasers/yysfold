@@ -37,6 +37,11 @@ interface ChatReference {
     score: number;
     label: string;
     similarity: number;
+    breakdown?: {
+      density: { component: number; detail: string };
+      pqResidual: { component: number; detail: string };
+      tags: { component: number; detail: string };
+    };
   } | null;
 }
 
@@ -200,10 +205,19 @@ export function ChatPanel({ sources }: ChatPanelProps) {
                 <span>Regime: {message.primaryReference.behaviorRegime}</span>
               )}
               {message.primaryReference.anomaly && (
-                <span>
-                  Anomaly {message.primaryReference.anomaly.score.toFixed(2)} (
-                  {message.primaryReference.anomaly.label})
-                </span>
+                <>
+                  <span>
+                    Anomaly {message.primaryReference.anomaly.score.toFixed(2)} (
+                    {message.primaryReference.anomaly.label})
+                  </span>
+                  {message.primaryReference.anomaly.breakdown && (
+                    <span className="text-[11px] text-gray-500">
+                      Density {message.primaryReference.anomaly.breakdown.density.detail} · PQ{' '}
+                      {message.primaryReference.anomaly.breakdown.pqResidual.detail} · Tags{' '}
+                      {message.primaryReference.anomaly.breakdown.tags.detail}
+                    </span>
+                  )}
+                </>
               )}
                 {message.primaryReference.lendingTransactions &&
                   message.primaryReference.lendingTransactions.length > 0 && (
@@ -286,9 +300,17 @@ function ReferenceCard({ reference }: { reference: ChatReference }) {
         <span className="text-[10px] text-gray-600">Regime: {reference.behaviorRegime}</span>
       )}
       {reference.anomaly && (
-        <span className="text-[10px] text-gray-600">
-          Anomaly {reference.anomaly.score.toFixed(2)} ({reference.anomaly.label})
-        </span>
+        <div className="text-[10px] text-gray-600 space-y-0.5">
+          <span>
+            Anomaly {reference.anomaly.score.toFixed(2)} ({reference.anomaly.label})
+          </span>
+          {reference.anomaly.breakdown && (
+            <span className="block text-gray-500">
+              Density {reference.anomaly.breakdown.density.detail} · PQ{' '}
+              {reference.anomaly.breakdown.pqResidual.detail}
+            </span>
+          )}
+        </div>
       )}
       {reference.behaviorMetrics && (
         <div className="text-[10px] text-gray-600">

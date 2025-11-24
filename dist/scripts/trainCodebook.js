@@ -1,8 +1,13 @@
-import { createReadStream, mkdirSync } from 'node:fs';
+import { createReadStream, mkdirSync, existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { createInterface } from 'node:readline';
-import { resolve, dirname } from 'node:path';
+import { resolve, dirname, basename } from 'node:path';
 import { createDeterministicCodebook, saveCodebookToFile, } from '../folding/codebook.js';
 import { createSeededRandom } from '../utils/random.js';
+import { hashCodebookRoot } from '../folding/commit.js';
+import { computeNormalizationStats, normalizeVectors } from '../folding/normalization.js';
+import { pqEncode } from '../folding/pq.js';
+import { summarizeResiduals } from '../analytics/residuals.js';
+const MAX_RESIDUAL_SAMPLES = 100_000;
 async function main() {
     const options = parseArgs(process.argv.slice(2));
     const { vectors, metadata } = await loadVectors(options);
@@ -16,14 +21,35 @@ async function main() {
             seed: options.seed,
         });
         saveCodebookToFile(options.output, fallback, metadata);
+        const fallbackRoot = hashCodebookRoot(fallback);
+        updateManifest(options.output, fallbackRoot, metadata);
         // eslint-disable-next-line no-console
         console.log(`Saved fallback codebook to ${options.output}`);
         return;
     }
     const codebook = trainCodebookFromVectors(vectors, options);
-    saveCodebookToFile(options.output, codebook, metadata);
+    const normalization = computeNormalizationStats(vectors, options.numSubspaces * options.subvectorDim);
+    const codebookWithNormalization = {
+        ...codebook,
+        normalization,
+    };
+    const residualStats = measureResidualStats(codebookWithNormalization, vectors);
+    const errorBound = Math.max(0.01, residualStats.p95 || 0.25);
+    const enrichedCodebook = {
+        ...codebookWithNormalization,
+        errorBound,
+    };
+    const enrichedMetadata = {
+        ...metadata,
+        normalization,
+        errorBound,
+        residualStats,
+    };
+    saveCodebookToFile(options.output, enrichedCodebook, enrichedMetadata);
+    const root = hashCodebookRoot(enrichedCodebook);
+    updateManifest(options.output, root, enrichedMetadata);
     // eslint-disable-next-line no-console
-    console.log(`Saved trained codebook (${options.numSubspaces}x${options.subvectorDim} · ${options.numCentroids}) to ${options.output}`);
+    console.log(`Saved trained codebook (${options.numSubspaces}x${options.subvectorDim} · ${options.numCentroids}) to ${options.output} (root ${root.slice(0, 12)}...)`);
 }
 function parseArgs(argv) {
     const options = {
@@ -139,6 +165,23 @@ function trainCodebookFromVectors(vectors, options) {
         numSubspaces: options.numSubspaces,
     };
 }
+function measureResidualStats(codebook, vectors) {
+    if (!vectors.length) {
+        return summarizeResiduals([]);
+    }
+    const sampleSize = Math.min(MAX_RESIDUAL_SAMPLES, vectors.length);
+    const sample = vectors.slice(0, sampleSize);
+    const normalized = normalizeVectors(sample, codebook.normalization);
+    const block = {
+        foldedVectors: normalized,
+        metadata: {
+            blockHeight: 0,
+            txCount: sampleSize,
+        },
+    };
+    const pqResult = pqEncode(block, codebook, { errorBound: 0, strict: false });
+    return summarizeResiduals(pqResult.residuals ?? []);
+}
 function kmeans(data, k, dim, iterations, seed) {
     if (data.length === 0) {
         return Array.from({ length: k }, () => Array.from({ length: dim }, () => 0));
@@ -204,6 +247,26 @@ function squaredDistance(a, b) {
 }
 function mkdirp(path) {
     mkdirSync(path, { recursive: true });
+}
+function updateManifest(outputPath, root, metadata) {
+    const manifestPath = resolve(dirname(outputPath), 'manifest.json');
+    const entry = {
+        root,
+        file: basename(outputPath),
+        createdAt: new Date().toISOString(),
+        metadata,
+    };
+    let manifest = [];
+    if (existsSync(manifestPath)) {
+        try {
+            manifest = JSON.parse(readFileSync(manifestPath, 'utf-8'));
+        }
+        catch {
+            manifest = [];
+        }
+    }
+    manifest.unshift(entry);
+    writeFileSync(manifestPath, JSON.stringify(manifest.slice(0, 25), null, 2), 'utf-8');
 }
 if (import.meta.url === `file://${process.argv[1]}`) {
     main().catch((error) => {

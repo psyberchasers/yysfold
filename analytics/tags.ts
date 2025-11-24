@@ -77,57 +77,25 @@ const ASSET_ALIASES: Record<string, string> = {
   '0X4': 'SYSTEM_MESSAGE_FLOW',
 };
 
+export interface TransactionCategories {
+  dex: boolean;
+  nft: boolean;
+  lending: boolean;
+  bridge: boolean;
+  highFee: boolean;
+  largeValue: boolean;
+}
+
+export interface TransactionAnalysis {
+  tags: string[];
+  categories: TransactionCategories;
+}
+
 export function deriveRawBlockTags(raw: RawBlock): string[] {
   const tags = new Set<string>();
   raw.transactions.forEach((tx) => {
-    const selector = extractSelector(tx);
-    if (selector) {
-      if (NFT_FUNCTIONS.has(selector)) {
-        tags.add('NFT_ACTIVITY');
-      }
-      if (DEX_FUNCTIONS.has(selector)) {
-        tags.add('DEX_ACTIVITY');
-      }
-    }
-
-    const receiver = normalizeAddress(tx['receiver'] ?? tx['to']);
-    const sender = normalizeAddress(tx['sender'] ?? tx['from']);
-    if ((receiver && NFT_CONTRACTS.has(receiver)) || (sender && NFT_CONTRACTS.has(sender))) {
-      tags.add('NFT_ACTIVITY');
-    }
-    if ((receiver && DEX_CONTRACTS.has(receiver)) || (sender && DEX_CONTRACTS.has(sender))) {
-      tags.add('DEX_ACTIVITY');
-    }
-    if ((receiver && BRIDGE_CONTRACTS.has(receiver)) || (sender && BRIDGE_CONTRACTS.has(sender))) {
-      tags.add('BRIDGE_ACTIVITY');
-    }
-    if ((receiver && LENDING_CONTRACTS.has(receiver)) || (sender && LENDING_CONTRACTS.has(sender))) {
-      tags.add('LENDING_ACTIVITY');
-    }
-
-    const gasPrice = Number(tx['gasPrice'] ?? 0);
-    if (gasPrice > 50_000_000_000) {
-      tags.add('HIGH_FEE');
-    }
-    const amountWei = Number(tx['amountWei'] ?? tx['amount'] ?? 0);
-    if (amountWei > 1e21) {
-      tags.add('LARGE_VALUE');
-    }
-
-    // semantic metadata from adapters / extended fields
-    addStringTag(tx['sector'], 'SECTOR', tags);
-    addStringTag(tx['venue'], 'VENUE', tags);
-    addStringTag(tx['pair'], 'PAIR', tags);
-    addStringTag(tx['currency'], 'CURRENCY', tags);
-    addStringTag(tx['jurisdiction'], 'JURISDICTION', tags);
-    addStringTag(tx['alertType'], 'AML_ALERT', tags);
-    addStringTag(tx['triggeredRule'], 'AML_RULE', tags);
-    const assetClass = tx['assetClass'] ?? tx['contractType'];
-    addAssetTag(assetClass, tags);
-    addSideTag(tx['side'], tags);
-    addRiskTags(tx['riskScore'], tags);
-    addLiquidityTags(tx['liquidityScore'], tags);
-    addSpreadTags(tx['spreadPips'], tags);
+    const analysis = analyzeTransaction(tx);
+    analysis.tags.forEach((tag) => tags.add(tag));
   });
 
   if (raw.transactions.length > 400) {
@@ -137,12 +105,89 @@ export function deriveRawBlockTags(raw: RawBlock): string[] {
   return Array.from(tags);
 }
 
+export function analyzeTransaction(tx: Record<string, unknown>): TransactionAnalysis {
+  const tags = new Set<string>();
+  const categories: TransactionCategories = {
+    dex: false,
+    nft: false,
+    lending: false,
+    bridge: false,
+    highFee: false,
+    largeValue: false,
+  };
+
+  const selector = extractSelector(tx);
+  if (selector) {
+    if (NFT_FUNCTIONS.has(selector)) {
+      tags.add('NFT_ACTIVITY');
+      categories.nft = true;
+    }
+    if (DEX_FUNCTIONS.has(selector)) {
+      tags.add('DEX_ACTIVITY');
+      categories.dex = true;
+    }
+  }
+
+  const receiver = normalizeAddress(tx['receiver'] ?? tx['to']);
+  const sender = normalizeAddress(tx['sender'] ?? tx['from']);
+  if ((receiver && NFT_CONTRACTS.has(receiver)) || (sender && NFT_CONTRACTS.has(sender))) {
+    tags.add('NFT_ACTIVITY');
+    categories.nft = true;
+  }
+  if ((receiver && DEX_CONTRACTS.has(receiver)) || (sender && DEX_CONTRACTS.has(sender))) {
+    tags.add('DEX_ACTIVITY');
+    categories.dex = true;
+  }
+  if ((receiver && BRIDGE_CONTRACTS.has(receiver)) || (sender && BRIDGE_CONTRACTS.has(sender))) {
+    tags.add('BRIDGE_ACTIVITY');
+    categories.bridge = true;
+  }
+  if ((receiver && LENDING_CONTRACTS.has(receiver)) || (sender && LENDING_CONTRACTS.has(sender))) {
+    tags.add('LENDING_ACTIVITY');
+    categories.lending = true;
+  }
+
+  const gasPrice = Number(tx['gasPrice'] ?? 0);
+  if (gasPrice > 50_000_000_000) {
+    tags.add('HIGH_FEE');
+    categories.highFee = true;
+  }
+  const amountWei = Number(tx['amountWei'] ?? tx['amount'] ?? 0);
+  if (amountWei > 1e21) {
+    tags.add('LARGE_VALUE');
+    categories.largeValue = true;
+  }
+
+  // semantic metadata from adapters / extended fields
+  addStringTag(tx['sector'], 'SECTOR', tags);
+  addStringTag(tx['venue'], 'VENUE', tags);
+  addStringTag(tx['pair'], 'PAIR', tags);
+  addStringTag(tx['currency'], 'CURRENCY', tags);
+  addStringTag(tx['jurisdiction'], 'JURISDICTION', tags);
+  addStringTag(tx['alertType'], 'AML_ALERT', tags);
+  addStringTag(tx['triggeredRule'], 'AML_RULE', tags);
+  const assetClass = tx['assetClass'] ?? tx['contractType'];
+  addAssetTag(assetClass, tags);
+  addSideTag(tx['side'], tags);
+  addRiskTags(tx['riskScore'], tags);
+  addLiquidityTags(tx['liquidityScore'], tags);
+  addSpreadTags(tx['spreadPips'], tags);
+
+  return {
+    tags: Array.from(tags),
+    categories,
+  };
+}
+
 function extractSelector(tx: Record<string, unknown>): string | null {
   if (typeof tx['functionSelector'] === 'string') {
     return tx['functionSelector'].slice(0, 10).toLowerCase();
   }
   if (typeof tx['data'] === 'string' && tx['data'].startsWith('0x') && tx['data'].length >= 10) {
     return tx['data'].slice(0, 10).toLowerCase();
+  }
+  if (typeof tx['input'] === 'string' && tx['input'].startsWith('0x') && tx['input'].length >= 10) {
+    return tx['input'].slice(0, 10).toLowerCase();
   }
   return null;
 }

@@ -7,8 +7,14 @@ export function hashPQCode(code) {
     const payload = JSON.stringify(code.indices);
     return toHex(blake3(Buffer.from(payload)));
 }
-export function hashCodebookRoot(centroids) {
-    const payload = JSON.stringify(centroids);
+export function hashCodebookRoot(input) {
+    const payload = Array.isArray(input)
+        ? JSON.stringify({ centroids: input })
+        : JSON.stringify({
+            centroids: input.centroids,
+            normalization: input.normalization,
+            errorBound: input.errorBound,
+        });
     return toHex(blake3(Buffer.from(payload)));
 }
 function toHex(bytes) {

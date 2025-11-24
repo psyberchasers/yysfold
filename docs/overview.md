@@ -65,5 +65,4 @@ This document tracks the block-folding prototype so we can see what already exis
 2. Produce sample hypergraph + hotzone snapshots (JSON + markdown) to drive upcoming UI prototypes.
 3. Automate PQ/codebook versioning: add registry metadata + command to print commitment roots for embedding into contracts.
 
-Add/update this file whenever major architectural or planning decisions change so future sessions can jump in quickly.
 

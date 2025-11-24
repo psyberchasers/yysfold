@@ -10,15 +10,20 @@ const DEFAULT_OPTIONS: Required<PQEncodeOptions> = {
   strict: false,
 };
 
-export function pqEncode(folded: FoldedBlock, codebook: PQCodebook, options: PQEncodeOptions = {}): PQCode {
+export function pqEncode(
+  folded: FoldedBlock,
+  codebook: PQCodebook,
+  options: PQEncodeOptions = {},
+): PQCode {
   const opts = { ...DEFAULT_OPTIONS, ...options };
   const indices = folded.foldedVectors.map((vector) => encodeVector(vector, codebook));
 
+  const residuals = computeResiduals(folded.foldedVectors, indices, codebook);
   if (opts.errorBound > 0) {
-    enforceErrorBound(folded.foldedVectors, indices, codebook, opts.errorBound, opts.strict);
+    enforceErrorBound(residuals, opts.errorBound, opts.strict);
   }
 
-  return { indices };
+  return { indices, residuals };
 }
 
 export function pqDecode(code: PQCode, codebook: PQCodebook): number[][] {
@@ -33,16 +38,8 @@ function encodeVector(vector: number[], codebook: PQCodebook): number[] {
   });
 }
 
-function enforceErrorBound(
-  originalVectors: number[][],
-  codeIndices: number[][],
-  codebook: PQCodebook,
-  errorBound: number,
-  strict: boolean,
-): void {
-  for (let i = 0; i < originalVectors.length; i += 1) {
-    const reconstructed = reconstructVector(codeIndices[i], codebook);
-    const error = computeError(padVector(originalVectors[i], reconstructed.length), reconstructed);
+function enforceErrorBound(residuals: number[], errorBound: number, strict: boolean): void {
+  residuals.forEach((error) => {
     if (error > errorBound) {
       const message = `PQ encode error ${error.toFixed(6)} exceeds bound ${errorBound}`;
       if (strict) {
@@ -52,7 +49,7 @@ function enforceErrorBound(
         console.warn(message);
       }
     }
-  }
+  });
 }
 
 function padVector(vector: number[], length: number): number[] {
@@ -104,5 +101,16 @@ function computeError(vectorA: number[], vectorB: number[]): number {
     sum += diff * diff;
   }
   return Math.sqrt(sum);
+}
+
+function computeResiduals(
+  originalVectors: number[][],
+  codeIndices: number[][],
+  codebook: PQCodebook,
+): number[] {
+  return originalVectors.map((vector, index) => {
+    const reconstructed = reconstructVector(codeIndices[index], codebook);
+    return computeError(padVector(vector, reconstructed.length), reconstructed);
+  });
 }
 

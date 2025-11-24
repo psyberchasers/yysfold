@@ -5,10 +5,11 @@ const DEFAULT_OPTIONS = {
 export function pqEncode(folded, codebook, options = {}) {
     const opts = { ...DEFAULT_OPTIONS, ...options };
     const indices = folded.foldedVectors.map((vector) => encodeVector(vector, codebook));
+    const residuals = computeResiduals(folded.foldedVectors, indices, codebook);
     if (opts.errorBound > 0) {
-        enforceErrorBound(folded.foldedVectors, indices, codebook, opts.errorBound, opts.strict);
+        enforceErrorBound(residuals, opts.errorBound, opts.strict);
     }
-    return { indices };
+    return { indices, residuals };
 }
 export function pqDecode(code, codebook) {
     return code.indices.map((subspaceIndices) => reconstructVector(subspaceIndices, codebook));
@@ -20,10 +21,8 @@ function encodeVector(vector, codebook) {
         return centroidIndex;
     });
 }
-function enforceErrorBound(originalVectors, codeIndices, codebook, errorBound, strict) {
-    for (let i = 0; i < originalVectors.length; i += 1) {
-        const reconstructed = reconstructVector(codeIndices[i], codebook);
-        const error = computeError(padVector(originalVectors[i], reconstructed.length), reconstructed);
+function enforceErrorBound(residuals, errorBound, strict) {
+    residuals.forEach((error) => {
         if (error > errorBound) {
             const message = `PQ encode error ${error.toFixed(6)} exceeds bound ${errorBound}`;
             if (strict) {
@@ -34,7 +33,7 @@ function enforceErrorBound(originalVectors, codeIndices, codebook, errorBound, s
                 console.warn(message);
             }
         }
-    }
+    });
 }
 function padVector(vector, length) {
     if (vector.length >= length) {
@@ -79,4 +78,10 @@ function computeError(vectorA, vectorB) {
         sum += diff * diff;
     }
     return Math.sqrt(sum);
+}
+function computeResiduals(originalVectors, codeIndices, codebook) {
+    return originalVectors.map((vector, index) => {
+        const reconstructed = reconstructVector(codeIndices[index], codebook);
+        return computeError(padVector(vector, reconstructed.length), reconstructed);
+    });
 }

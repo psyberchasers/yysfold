@@ -11,7 +11,7 @@ export function buildPublicInputs(args) {
     };
 }
 export function buildCodebookCommitment(codebook) {
-    return hashCodebookRoot(codebook.centroids);
+    return hashCodebookRoot(codebook);
 }
 export function buildPQCommitments(pqCode) {
     return hashPQCode(pqCode);

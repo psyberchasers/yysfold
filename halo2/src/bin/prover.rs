@@ -12,6 +12,7 @@ use rand::SeedableRng;
 use rand_chacha::ChaCha20Rng;
 
 use folding_halo2::{circuit::FoldedCircuit, io::load_witness, keys::load_or_init_keys, load_public_inputs};
+use std::env;
 
 #[derive(Parser, Debug)]
 #[command(version, about = "Halo2 prover for folded blocks")]
@@ -36,6 +37,7 @@ fn main() -> Result<()> {
     let witness = load_witness(&args.witness)?;
     let public_inputs = load_public_inputs(&args.public_inputs)?;
     let instances = public_inputs.to_field_elements()?;
+    let commitment_fields = public_inputs.commitment_fields()?;
 
     // Ensure witness parsed (even though circuit only checks commitments)
     if witness.folded_vectors.is_empty() || witness.pq_vectors.is_empty() {
@@ -47,15 +49,18 @@ fn main() -> Result<()> {
     let (params, pk) =
         load_or_init_keys(&args.proving_key, &args.verification_key, args.circuit_k, &blank)?;
 
-    let epsilon_squared = Fr::from(4);
+    let folded_matrix = to_field_matrix(&witness.folded_vectors);
+    let pq_matrix = to_field_matrix(&witness.pq_vectors);
+    let epsilon_squared = compute_field_residuals(&folded_matrix, &pq_matrix);
     let circuit = FoldedCircuit {
         public_inputs: instances.clone(),
-        folded_vectors: to_field_matrix(&witness.folded_vectors),
-        pq_vectors: to_field_matrix(&witness.pq_vectors),
+        folded_vectors: folded_matrix,
+        pq_vectors: pq_matrix,
         epsilon_squared,
+        commitments: commitment_fields,
     };
 
-    let instance_container = vec![instances];
+    let instance_container = vec![instances.clone()];
     let instance_refs: Vec<&[halo2curves::bn256::Fr]> =
         instance_container.iter().map(|v| v.as_slice()).collect();
     let circuit_instances: Vec<&[&[halo2curves::bn256::Fr]]> = vec![&instance_refs[..]];
@@ -95,9 +100,31 @@ fn to_field_matrix(input: &[Vec<f64>]) -> Vec<Vec<Fr>> {
         .collect()
 }
 
+fn compute_field_residuals(folded: &[Vec<Fr>], pq: &[Vec<Fr>]) -> Vec<Fr> {
+    let multiplier = env::var("HALO2_EPSILON_MULTIPLIER")
+        .ok()
+        .and_then(|raw| raw.parse::<f64>().ok())
+        .unwrap_or(1.0);
+    let multiplier_fr = float_to_field(multiplier);
+    folded
+        .iter()
+        .zip(pq.iter())
+        .map(|(f_row, pq_row)| {
+            f_row
+                .iter()
+                .zip(pq_row.iter())
+                .fold(Fr::zero(), |acc, (a, b)| {
+                    let diff = *a - *b;
+                    acc + diff.square()
+                })
+                * multiplier_fr
+        })
+        .collect()
+}
+
 fn float_to_field(value: f64) -> Fr {
     const SCALE: f64 = 1_000_000.0;
-    let scaled = (value * SCALE).round() as i64;
+    let scaled = (value * SCALE).floor() as i64;
     from_i64(scaled) * scale_inv()
 }
 

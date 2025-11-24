@@ -15,16 +15,19 @@
     "codebook:train": "npm run build && node dist/scripts/trainCodebook.js",
     "ingest": "npm run build && node dist/scripts/ingestBlocks.js",
     "ingest:watch": "npm run build && node dist/scripts/watchIngest.js",
-    "ingest:financial": "npm run build && node dist/scripts/ingestFinancial.js"
+    "ingest:financial": "npm run build && node dist/scripts/ingestFinancial.js",
+    "metrics:backfill": "npm run build && node dist/scripts/backfillMetrics.js",
+    "atlas:build": "npm run build && node dist/scripts/buildAtlas.js"
   },
   "dependencies": {
     "@noble/hashes": "^1.5.0",
     "better-sqlite3": "^9.4.0",
+    "dotenv": "^17.2.3",
     "ethers": "^6.12.1"
   },
   "devDependencies": {
+    "@types/better-sqlite3": "^7.6.8",
     "typescript": "^5.4.0",
-    "vitest": "^4.0.12",
-    "@types/better-sqlite3": "^7.6.8"
+    "vitest": "^4.0.12"
   }
 }

@@ -22,7 +22,7 @@ async function main() {
         timestamp: options.timestamp,
     });
     const codebook = loadActiveCodebook(options.codebookPath);
-    const codebookRoot = hashCodebookRoot(codebook.centroids);
+    const codebookRoot = hashCodebookRoot(codebook);
     const halo2 = createHalo2Context();
     const summary = await computeSummary(rawBlock, options.adapter, codebook, codebookRoot, options.tags, halo2);
     const paths = writeArtifacts(adapter.source, rawBlock.header.height, rawBlock);
@@ -115,9 +115,18 @@ function createHalo2Context() {
 }
 async function computeSummary(rawBlock, source, codebook, codebookRoot, extraTags, halo2) {
     const artifact = computeFoldedBlock(rawBlock, codebook);
-    const hotzones = detectHotzones(artifact.pqCode, codebook);
-    const hypergraph = buildHypergraph(hotzones);
     const rawTags = deriveRawBlockTags(rawBlock);
+    const hotzoneCap = Number.isFinite(Number(process.env.HOTZONE_LIMIT))
+        ? Number(process.env.HOTZONE_LIMIT)
+        : 18;
+    const hotzones = detectHotzones(artifact.pqCode, codebook, {
+        maxZones: hotzoneCap,
+        contextTags: [...rawTags, ...extraTags],
+    });
+    const hypergraph = buildHypergraph(hotzones, {
+        densityThreshold: 5e-5,
+        maxEdgeSize: 4,
+    });
     const semanticTags = Array.from(new Set([...rawTags, ...extraTags, source.toUpperCase()]));
     const params = {
         provingKeyPath: halo2.provingKeyPath,

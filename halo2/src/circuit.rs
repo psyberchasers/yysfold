@@ -1,5 +1,5 @@
 use halo2_proofs::{
-    circuit::{Cell, Layouter, Region, SimpleFloorPlanner, Value},
+    circuit::{Layouter, Region, SimpleFloorPlanner, Value},
     plonk::{Advice, Circuit, Column, ConstraintSystem, Error, Instance, Selector},
     poly::Rotation,
 };
@@ -8,6 +8,7 @@ use halo2curves::bn256::Fr;
 #[derive(Clone, Debug)]
 pub struct FoldedConfig {
     advice: Column<Advice>,
+    commit_advice: Column<Advice>,
     instance: Column<Instance>,
     diff_selector: Selector,
     sum_selector: Selector,
@@ -18,7 +19,8 @@ pub struct FoldedCircuit {
     pub public_inputs: Vec<Fr>,
     pub folded_vectors: Vec<Vec<Fr>>,
     pub pq_vectors: Vec<Vec<Fr>>,
-    pub epsilon_squared: Fr,
+    pub epsilon_squared: Vec<Fr>,
+    pub commitments: [Fr; 3],
 }
 
 impl FoldedCircuit {
@@ -27,7 +29,8 @@ impl FoldedCircuit {
             public_inputs: vec![Fr::from(0); len],
             folded_vectors: vec![],
             pq_vectors: vec![],
-            epsilon_squared: Fr::from(0),
+            epsilon_squared: vec![],
+            commitments: [Fr::zero(); 3],
         }
     }
 }
@@ -47,10 +50,12 @@ impl Circuit<Fr> for FoldedCircuit {
 
     fn configure(meta: &mut ConstraintSystem<Fr>) -> Self::Config {
         let advice = meta.advice_column();
+        let commit_advice = meta.advice_column();
         let instance = meta.instance_column();
         let diff_selector = meta.selector();
         let sum_selector = meta.selector();
         meta.enable_equality(advice);
+        meta.enable_equality(commit_advice);
         meta.enable_equality(instance);
         meta.create_gate("folded_diff", |meta| {
             let s = meta.query_selector(diff_selector);
@@ -66,6 +71,7 @@ impl Circuit<Fr> for FoldedCircuit {
         });
         FoldedConfig {
             advice,
+            commit_advice,
             instance,
             diff_selector,
             sum_selector,
@@ -77,31 +83,43 @@ impl Circuit<Fr> for FoldedCircuit {
         config: Self::Config,
         mut layouter: impl Layouter<Fr>,
     ) -> Result<(), Error> {
-        let FoldedConfig { advice, instance, .. } = config.clone();
-        let mut assigned: Vec<Cell> = Vec::with_capacity(self.public_inputs.len());
+        let commit_advice = config.commit_advice;
+        let instance = config.instance;
         layouter.assign_region(
-            || "public inputs copy",
+            || "commitment equality",
             |mut region| {
-                for (row, value) in self.public_inputs.iter().enumerate() {
-                    let cell = region.assign_advice(advice, row, Value::known(*value));
-                    assigned.push(cell.cell());
+                for (idx, commitment) in self.commitments.iter().enumerate() {
+                    let private =
+                        region.assign_advice(commit_advice, idx * 2, Value::known(*commitment));
+                    let public = region.assign_advice_from_instance(
+                        || "commitment_public",
+                        instance,
+                        idx,
+                        commit_advice,
+                        idx * 2 + 1,
+                    )?;
+                    region.constrain_equal(private.cell(), public.cell());
                 }
                 Ok(())
             },
         )?;
-        for (row, cell) in assigned.into_iter().enumerate() {
-            layouter.constrain_instance(cell, instance, row);
-        }
 
-        if self.folded_vectors.len() == self.pq_vectors.len() && !self.folded_vectors.is_empty() {
-            let batches = self.folded_vectors.iter().zip(self.pq_vectors.iter());
-            for (batch_idx, (folded, pq)) in batches.enumerate() {
+        if !self.folded_vectors.is_empty()
+            && self.folded_vectors.len() == self.pq_vectors.len()
+            && self.folded_vectors.len() == self.epsilon_squared.len()
+        {
+            let batches = self
+                .folded_vectors
+                .iter()
+                .zip(self.pq_vectors.iter())
+                .zip(self.epsilon_squared.iter());
+            for (batch_idx, ((folded, pq), epsilon)) in batches.enumerate() {
                 enforce_component_difference(
                     &mut layouter,
                     &config,
                     folded,
                     pq,
-                    self.epsilon_squared,
+                    *epsilon,
                     batch_idx,
                 )?;
             }
@@ -137,7 +155,14 @@ fn enforce_component_difference(
                 config.diff_selector.enable(&mut region, offset)?;
                 offset += 3;
             }
-            region.assign_advice(config.advice, offset, Value::known(sum - epsilon_squared));
+            let diff_val = sum - epsilon_squared;
+            if diff_val != Fr::zero() {
+                println!(
+                    "epsilon mismatch batch {}: sum {:?} != epsilon {:?}",
+                    batch_idx, sum, epsilon_squared
+                );
+            }
+            region.assign_advice(config.advice, offset, Value::known(diff_val));
             config.sum_selector.enable(&mut region, offset)?;
             Ok(())
         },

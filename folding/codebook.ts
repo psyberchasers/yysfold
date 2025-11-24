@@ -1,6 +1,6 @@
 import { readFileSync, writeFileSync, mkdirSync } from 'node:fs';
 import { dirname } from 'node:path';
-import { PQCodebook } from './types.js';
+import { NormalizationStats, PQCodebook } from './types.js';
 import { createSeededRandom } from '../utils/random.js';
 
 export interface DeterministicCodebookParams {
@@ -49,6 +49,9 @@ export function assertCodebookConsistency(codebook: PQCodebook): void {
       }
     });
   });
+  if (codebook.normalization) {
+    validateNormalization(codebook.normalization, codebook.subvectorDim * codebook.numSubspaces);
+  }
 }
 
 export function loadCodebookFromFile(path: string): PQCodebook {
@@ -63,6 +66,12 @@ export function saveCodebookToFile(path: string, codebook: PQCodebook, metadata?
   const payload = metadata ? { metadata, codebook } : codebook;
   mkdirSync(dirname(path), { recursive: true });
   writeFileSync(path, JSON.stringify(payload, null, 2), 'utf-8');
+}
+
+function validateNormalization(stats: NormalizationStats, dimension: number) {
+  if (stats.mean.length !== dimension || stats.stdDev.length !== dimension) {
+    throw new Error(`Normalization stats dimension mismatch (expected ${dimension})`);
+  }
 }
 
 
