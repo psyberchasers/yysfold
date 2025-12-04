@@ -4,16 +4,19 @@ export type TxVector = NumericVector;
 export type StateVector = NumericVector;
 export type WitnessVector = NumericVector;
 
-export interface BlockHeader {
+export interface RawBlockHeader {
   height: number;
-  prevStateRoot: string;
-  newStateRoot: string;
+  hash: string;
+  parentHash: string;
+  stateRoot: string;
+  txRoot: string;
+  receiptsRoot?: string;
   timestamp?: number;
-  txMerkleRoot?: string;
+  headerRlp?: string;
 }
 
 export interface RawBlock {
-  header: BlockHeader;
+  header: RawBlockHeader;
   transactions: Record<string, unknown>[];
   executionTraces: Record<string, unknown>[];
   witnessData: Record<string, unknown>;
