@@ -2,6 +2,10 @@
 const nextConfig = {
   experimental: {
     externalDir: true,
+    extensionAlias: {
+      '.js': ['.ts', '.tsx', '.js'],
+      '.mjs': ['.mts', '.ts', '.mjs'],
+    },
   },
 };
 
