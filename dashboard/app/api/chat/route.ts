@@ -42,7 +42,7 @@ export async function POST(request: Request) {
   );
   if (matches.length === 0 && inferredTags.length > 0) {
     const widened = dedupeBlocks(
-      inferredTags.flatMap((tag) => searchBlocksByTag(tag, source, limit * 5, 1000)),
+      inferredTags.flatMap((tag) => searchBlocksByTag(tag, source, limit * 5)),
       limit,
     );
     if (widened.length > 0) {
