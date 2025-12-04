@@ -43,7 +43,7 @@ export default async function BlockDetailPage({ params }: PageProps) {
   const executionTraces = rawBlock.executionTraces ?? [];
 
   const totalHotzoneDensity =
-    hotzones.reduce((sum, zone) => sum + Number(zone?.density ?? 0), 0) || 1;
+    hotzones.reduce((sum: number, zone: any) => sum + Number(zone?.density ?? 0), 0) || 1;
 
   return (
     <main className="min-h-screen bg-white text-gray-900 px-6 py-10">
