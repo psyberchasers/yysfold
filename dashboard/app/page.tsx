@@ -112,7 +112,7 @@ export default async function Page({ searchParams }: PageProps) {
   const anomaly = computeAnomalyScore({
     hotzones,
     pqResidualStats: payload.pqResidualStats,
-    tagVector: summary.semanticTags ?? [],
+    tagVector: summary.tags ?? [],
   });
   const filteredBlocks =
     chainFilter && chainFilter.toLowerCase() !== 'all'
