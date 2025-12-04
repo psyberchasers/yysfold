@@ -11,6 +11,9 @@ export interface RawBlockHeader {
   stateRoot: string;
   txRoot: string;
   receiptsRoot?: string;
+  prevStateRoot?: string;
+  newStateRoot?: string;
+  txMerkleRoot?: string;
   timestamp?: number;
   headerRlp?: string;
 }
