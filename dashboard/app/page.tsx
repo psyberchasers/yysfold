@@ -35,7 +35,7 @@ const HypergraphView3D = dynamic(() => import('../components/HypergraphView3D'),
 });
 
 interface PageProps {
-  searchParams?: { tag?: string };
+  searchParams?: { tag?: string; chain?: string };
 }
 
 const spotlightTags = ['NFT_ACTIVITY', 'DEX_ACTIVITY', 'HIGH_FEE', 'LARGE_VALUE', 'LENDING_ACTIVITY'];
