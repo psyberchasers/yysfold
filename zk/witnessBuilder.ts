@@ -1,4 +1,3 @@
-import { blake3 } from '@noble/hashes/blake3';
 import { FoldedArtifact, PQCodebook, RawBlock } from '../folding/types.js';
 import { pqDecode } from '../folding/pq.js';
 import { buildPublicInputs, FoldedProof, ZkProvingParams, ZkPublicInputs } from './publicInputs.js';
@@ -10,6 +9,10 @@ export interface CircuitWitness {
   foldedVectors: number[][];
   pqIndices: number[][];
   pqVectors: number[][];
+  blockHash: string;
+  txRoot: string;
+  stateRoot: string;
+  headerRlp?: string;
 }
 
 export interface ZkBackend {
@@ -26,6 +29,10 @@ export function buildCircuitWitness(raw: RawBlock, artifact: FoldedArtifact, cod
     foldedVectors: artifact.foldedBlock.foldedVectors,
     pqIndices: artifact.pqCode.indices,
     pqVectors,
+    blockHash: raw.header.hash ?? '',
+    txRoot: raw.header.txRoot ?? '',
+    stateRoot: raw.header.stateRoot ?? '',
+    headerRlp: raw.header.headerRlp,
   };
 }
 
@@ -37,12 +44,11 @@ export async function proveFoldedBlock(
   backend: ZkBackend,
 ): Promise<FoldedProof> {
   const witness = buildCircuitWitness(raw, artifact, codebook);
-  const txMerkleRoot = raw.header.txMerkleRoot ?? deriveTxMerkleRoot(raw);
   const publicInputs = buildPublicInputs({
-    prevStateRoot: raw.header.prevStateRoot,
-    newStateRoot: raw.header.newStateRoot,
+    prevStateRoot: raw.header.parentHash ?? '',
+    newStateRoot: raw.header.stateRoot ?? '',
     blockHeight: raw.header.height,
-    txMerkleRoot,
+    txMerkleRoot: raw.header.txRoot ?? '',
     commitments: artifact.commitments,
     codebookRoot: params.codebookRoot,
   });
@@ -62,9 +68,3 @@ export async function verifyFoldedBlock(
 ): Promise<boolean> {
   return backend.verify({ proof, params });
 }
-
-function deriveTxMerkleRoot(raw: RawBlock): string {
-  const payload = JSON.stringify(raw.transactions);
-  return Buffer.from(blake3(Buffer.from(payload))).toString('hex');
-}
-

@@ -6,10 +6,10 @@ export type WitnessVector = NumericVector;
 
 export interface RawBlockHeader {
   height: number;
-  hash: string;
-  parentHash: string;
-  stateRoot: string;
-  txRoot: string;
+  hash?: string;
+  parentHash?: string;
+  stateRoot?: string;
+  txRoot?: string;
   receiptsRoot?: string;
   prevStateRoot?: string;
   newStateRoot?: string;
