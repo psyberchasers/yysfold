@@ -5,6 +5,21 @@ import path from 'node:path';
 const SCRIPT_DIR = path.dirname(fileURLToPath(import.meta.url));
 const INGEST_SCRIPT = path.join(SCRIPT_DIR, 'ingestBlocks.js');
 const ATLAS_SCRIPT = path.join(SCRIPT_DIR, 'buildAtlas.js');
+function parseEnvList(value) {
+    if (!value)
+        return undefined;
+    const parts = value
+        .split(',')
+        .map((token) => token.trim())
+        .filter(Boolean);
+    return parts.length > 0 ? parts : undefined;
+}
+function parseEnvNumber(value) {
+    if (!value)
+        return undefined;
+    const parsed = Number.parseInt(value, 10);
+    return Number.isFinite(parsed) && parsed >= 0 ? parsed : undefined;
+}
 async function main() {
     const options = parseArgs(process.argv.slice(2));
     // eslint-disable-next-line no-console
@@ -41,13 +56,22 @@ async function main() {
     }
 }
 function parseArgs(argv) {
+    const envDefaults = {
+        chains: parseEnvList(process.env.STREAM_CHAINS),
+        batchSize: parseEnvNumber(process.env.STREAM_BATCH_SIZE),
+        intervalMs: parseEnvNumber(process.env.STREAM_INTERVAL_MS),
+        maxFailures: parseEnvNumber(process.env.STREAM_MAX_FAILURES),
+        atlasIntervalMs: parseEnvNumber(process.env.STREAM_ATLAS_INTERVAL_MS),
+    };
     const options = {
-        chains: ['eth', 'avax'],
-        batchSize: 25,
-        intervalMs: 60_000,
-        maxFailures: 5,
+        chains: envDefaults.chains ?? ['eth', 'avax', 'sol'],
+        batchSize: envDefaults.batchSize ?? 25,
+        intervalMs: envDefaults.intervalMs ?? 60_000,
+        maxFailures: envDefaults.maxFailures ?? 5,
         env: {},
-        atlasIntervalMs: 15 * 60_000,
+        atlasIntervalMs: process.env.STREAM_DISABLE_ATLAS === '1'
+            ? 0
+            : envDefaults.atlasIntervalMs ?? 15 * 60_000,
     };
     argv.forEach((token) => {
         if (token.startsWith('--chains=')) {

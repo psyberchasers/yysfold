@@ -10,7 +10,6 @@ import {
 } from '@/lib/blocks';
 import { getChainMetadata } from '@/lib/chains';
 import { HotzoneCard } from '../components/HotzoneCard';
-import HypergraphView3D from '../components/HypergraphView3D';
 import { BlockHeatmap } from '../components/BlockHeatmap';
 import { BlockProjection } from '../components/BlockProjection';
 import { ProofPanel } from '../components/ProofPanel';
@@ -22,6 +21,18 @@ import { MetricsChart } from '../components/MetricsChart';
 import PQResidualHistogram from '../components/PQResidualHistogram';
 import { summarizeBehaviorRegime } from '@/lib/regime';
 import { computeAnomalyScore } from '@/lib/anomaly';
+import dynamic from 'next/dynamic';
+import LiveHeartbeatBadge from '../components/LiveHeartbeatBadge';
+import PredictionCard from '../components/PredictionCard';
+import { readLatestPredictions, type PredictionSignal } from '@/lib/predictions';
+import { readLatestMempoolSnapshots, type MempoolSnapshot } from '@/lib/mempool';
+import MempoolTicker from '../components/MempoolTicker';
+import MempoolPanel from '../components/MempoolPanel';
+import { fetchFromDataApi, isRemoteDataEnabled } from '@/lib/dataSource';
+
+const HypergraphView3D = dynamic(() => import('../components/HypergraphView3D'), {
+  ssr: false,
+});
 
 interface PageProps {
   searchParams?: { tag?: string };
@@ -29,16 +40,52 @@ interface PageProps {
 
 const spotlightTags = ['NFT_ACTIVITY', 'DEX_ACTIVITY', 'HIGH_FEE', 'LARGE_VALUE', 'LENDING_ACTIVITY'];
 
-async function loadDashboardData(tagFilter?: string) {
+interface DashboardDataPayload {
+  summary: StoredBlockSummary | null;
+  payload: any;
+  recent: StoredBlockSummary[];
+  spotlights: TagStats[];
+  chains: string[];
+  mempoolSnapshots: MempoolSnapshot[];
+  predictions: PredictionSignal[];
+}
+
+async function loadDashboardData(tagFilter?: string): Promise<DashboardDataPayload> {
+  if (isRemoteDataEnabled()) {
+    try {
+      const params = new URLSearchParams();
+      if (tagFilter) {
+        params.set('tag', tagFilter);
+      }
+      const query = params.size > 0 ? `?${params.toString()}` : '';
+      return await fetchFromDataApi<DashboardDataPayload>(`/dashboard${query}`);
+    } catch (error) {
+      console.warn('[dashboard] remote data fetch failed, falling back to local data source', error);
+    }
+  }
+  return loadDashboardDataFromFilesystem(tagFilter);
+}
+
+function loadDashboardDataFromFilesystem(tagFilter?: string): DashboardDataPayload {
   const summary = getLatestBlockSummary();
   if (!summary) {
-    return { summary: null, payload: null, recent: [], spotlights: [], chains: [] };
+    return {
+      summary: null,
+      payload: null,
+      recent: [],
+      spotlights: [],
+      chains: [],
+      mempoolSnapshots: [],
+      predictions: [],
+    };
   }
   const payload = JSON.parse(readFileSync(summary.summaryPath, 'utf-8'));
   const recent = listRecentBlockSummaries(12, tagFilter);
   const spotlights = spotlightTags.map((tag) => getTagStats(tag));
   const chains = listSources();
-  return { summary, payload, recent, spotlights, chains };
+  const mempoolSnapshots = readLatestMempoolSnapshots();
+  const predictions = readLatestPredictions();
+  return { summary, payload, recent, spotlights, chains, mempoolSnapshots, predictions };
 }
 
 export default async function Page({ searchParams }: PageProps) {
@@ -54,7 +101,7 @@ export default async function Page({ searchParams }: PageProps) {
     );
   }
 
-  const { summary, payload, recent, spotlights, chains } = data;
+  const { summary, payload, recent, spotlights, chains, mempoolSnapshots, predictions } = data;
   const hotzones = payload.hotzones ?? [];
   const hypergraph = payload.hypergraph ?? { nodes: [], hyperedges: [] };
   const tagFilters = ['NFT_ACTIVITY', 'DEX_ACTIVITY', 'HIGH_FEE', 'LARGE_VALUE'];
@@ -74,6 +121,8 @@ export default async function Page({ searchParams }: PageProps) {
 
   const totalHotzoneDensity =
     hotzones.reduce((sum, zone) => sum + Number(zone?.density ?? 0), 0) || 1;
+  const initialPrediction =
+    predictions.find((prediction) => prediction.chain === summary.chain) ?? predictions[0] ?? null;
 
   return (
     <main className="min-h-screen bg-white text-gray-900 px-10 py-10">
@@ -113,60 +162,76 @@ export default async function Page({ searchParams }: PageProps) {
                 {summary.chain} · #{summary.height}
               </h1>
               <p className="text-sm text-gray-600">{formatTimestamp(summary.timestamp)}</p>
+              <div className="mt-3">
+                <div className="flex flex-wrap gap-2">
+                  {(summary.tags.length > 0 ? summary.tags : ['No tags']).map((tag) => (
+                    <span
+                      key={tag}
+                      className="px-3 py-1 rounded-full border border-gray-300 text-xs uppercase tracking-wide text-gray-700"
+                    >
+                      {tag.replace(/_/g, ' ')}
+                    </span>
+                  ))}
+                </div>
+                <div className="h-4" />
+              </div>
             </div>
-            <div className="flex flex-wrap gap-2">
-              {summary.tags.length > 0 ? (
-                summary.tags.map((tag) => (
-                  <span
-                    key={tag}
-                    className="px-3 py-1 rounded-full border border-gray-300 text-xs uppercase tracking-wide text-gray-700"
-                  >
-                    {tag.replace(/_/g, ' ')}
-                  </span>
-                ))
-              ) : (
-                <span className="text-xs text-gray-500">No tags detected</span>
-              )}
+            <div className="flex min-w-[220px] flex-col items-end gap-3">
+              <LiveHeartbeatBadge />
             </div>
           </div>
-          <div className="mt-6 flex flex-wrap items-center gap-4 text-sm text-gray-700">
-            <div className="flex items-center gap-2">
+          <div className="mt-6 grid grid-cols-2 gap-4 text-sm text-gray-700 md:grid-cols-4">
+            <div className="flex flex-col gap-1">
               <span className="text-gray-500 uppercase tracking-wide text-xs">Block hash</span>
-              <CopyableText
-                value={summary.blockHash}
-                label="block hash"
-                truncateAt={16}
-                className="text-gray-900"
-              />
+              <CopyableText value={summary.blockHash} label="block hash" truncateAt={16} className="text-gray-900" />
             </div>
-            <div className="flex items-center gap-2">
+            <div className="flex flex-col gap-1">
               <span className="text-gray-500 uppercase tracking-wide text-xs">Artifacts</span>
-              <a className="text-accent underline" href={buildArtifactUrl(summary.blockPath)}>
-                raw block
-              </a>
-              <span>·</span>
-              <a className="text-accent underline" href={buildArtifactUrl(summary.proofPath)}>
-                proof
-              </a>
+              <div className="flex items-center gap-2">
+                <a className="text-accent underline" href={buildArtifactUrl(summary.blockPath)}>
+                  raw block
+                </a>
+                <span>·</span>
+                <a className="text-accent underline" href={buildArtifactUrl(summary.proofPath)}>
+                  proof
+                </a>
+              </div>
             </div>
-            <div className="flex items-center gap-2">
+            <div className="flex flex-col gap-1">
               <span className="text-gray-500 uppercase tracking-wide text-xs">Regime</span>
               <span className="font-semibold text-gray-900">{regime.label}</span>
             </div>
-            <div className="flex items-center gap-2">
+            <div className="flex flex-col gap-1">
               <span className="text-gray-500 uppercase tracking-wide text-xs">Anomaly</span>
-              <div className="flex flex-col">
+              <div>
                 <span className="font-semibold text-gray-900">
                   {anomaly.score.toFixed(2)} ({anomaly.label})
                 </span>
-                <span className="text-xs text-gray-500">
+                <p className="text-xs text-gray-500">
                   Density {anomaly.breakdown.density.detail} · PQ {anomaly.breakdown.pqResidual.detail} · Tags{' '}
                   {anomaly.breakdown.tags.detail}
-                </span>
+                </p>
               </div>
             </div>
           </div>
         </section>
+
+        <PredictionCard chain={summary.chain} initial={initialPrediction} />
+
+        {mempoolSnapshots.length > 0 && (
+          <section className="bg-white rounded-3xl border border-emerald-100/80 p-6 shadow-sm">
+            <div className="flex items-center justify-between mb-4">
+              <div>
+                <p className="text-xs uppercase tracking-[0.3em] text-emerald-600">Incoming activity</p>
+                <h2 className="text-lg font-semibold text-gray-900">Live mempool feed</h2>
+              </div>
+              <span className="text-xs text-emerald-700 uppercase tracking-wide">
+                {mempoolSnapshots.length} chains
+              </span>
+            </div>
+            <MempoolTicker initial={mempoolSnapshots} />
+          </section>
+        )}
 
         <section className="grid gap-6 lg:grid-cols-[2fr_1fr]">
           <article className="bg-white rounded-3xl border border-gray-200 p-6 shadow-sm">
@@ -207,6 +272,10 @@ export default async function Page({ searchParams }: PageProps) {
               Commitments hashed with the active codebook root and provable via Halo2.
             </div>
           </article>
+        </section>
+
+        <section>
+          <MempoolPanel initial={mempoolSnapshots} />
         </section>
 
         <section className="grid gap-3 sm:grid-cols-3 xl:grid-cols-5">

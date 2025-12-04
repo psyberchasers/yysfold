@@ -1,9 +1,8 @@
 import { notFound } from 'next/navigation';
 import Link from 'next/link';
 import { readFileSync } from 'node:fs';
-import { getBlockSummary } from '@/lib/blocks';
+import { getBlockSummary, type StoredBlockSummary } from '@/lib/blocks';
 import { HotzoneCard } from '@/components/HotzoneCard';
-import HypergraphView3D from '@/components/HypergraphView3D';
 import { BlockHeatmap } from '@/components/BlockHeatmap';
 import { BlockProjection } from '@/components/BlockProjection';
 import { ProofPanel } from '@/components/ProofPanel';
@@ -11,10 +10,15 @@ import { findLendingTransactions } from '@/lib/tagEvidence';
 import type { LendingTransactionEvidence } from '@/lib/tagEvidence';
 import { CopyableText } from '@/components/CopyableText';
 import { buildArtifactUrl } from '@/lib/artifacts';
+import dynamic from 'next/dynamic';
+
+const HypergraphView3D = dynamic(() => import('@/components/HypergraphView3D'), { ssr: false });
+const LatentExplorer = dynamic(() => import('@/components/LatentExplorer'), { ssr: false });
 import { getChainMetadata } from '@/lib/chains';
 import { summarizeBehaviorRegime } from '@/lib/regime';
 import { computeAnomalyScore } from '@/lib/anomaly';
 import { describePQComponent } from '@/lib/pqHints';
+import { fetchFromDataApi, isRemoteDataEnabled } from '@/lib/dataSource';
 
 interface PageProps {
   params: { chain: string; height: string };
@@ -25,12 +29,11 @@ export default async function BlockDetailPage({ params }: PageProps) {
   if (!Number.isFinite(height)) {
     notFound();
   }
-  const record = getBlockSummary(params.chain, height);
-  if (!record) {
+  const data = await loadBlockDetail(params.chain, height);
+  if (!data) {
     notFound();
   }
-  const payload = JSON.parse(readFileSync(record.summaryPath, 'utf-8'));
-  const rawBlock = JSON.parse(readFileSync(record.blockPath, 'utf-8'));
+  const { record, payload, rawBlock, anomaly, regime, chainMeta, lendingTransactions } = data;
   const hotzones = payload.hotzones ?? [];
   const hypergraph = payload.hypergraph ?? { nodes: [], hyperedges: [] };
   const foldedVectors = payload.foldedBlock?.foldedVectors ?? [];
@@ -38,14 +41,6 @@ export default async function BlockDetailPage({ params }: PageProps) {
   const metadata = payload.foldedBlock?.metadata ?? {};
   const transactions = rawBlock.transactions ?? [];
   const executionTraces = rawBlock.executionTraces ?? [];
-  const lendingTransactions = findLendingTransactions(record.blockPath, 20);
-  const chainMeta = getChainMetadata(record.chain);
-  const regime = summarizeBehaviorRegime(hotzones);
-  const anomaly = computeAnomalyScore({
-    hotzones,
-    pqResidualStats: payload.pqResidualStats,
-    tagVector: summary.semanticTags ?? [],
-  });
 
   const totalHotzoneDensity =
     hotzones.reduce((sum, zone) => sum + Number(zone?.density ?? 0), 0) || 1;
@@ -64,10 +59,20 @@ export default async function BlockDetailPage({ params }: PageProps) {
             <h1 className="text-3xl font-semibold text-gray-900">
               {record.chain} · #{record.height}
             </h1>
-            <p className="text-gray-500">
-              {formatTimestamp(record.timestamp)} ·{' '}
-              {record.tags.length > 0 ? record.tags.join(', ') : 'Unlabeled'}
-            </p>
+            <p className="text-gray-500">{formatTimestamp(record.timestamp)}</p>
+            <div className="flex flex-wrap gap-2 mt-2">
+              {record.tags.length === 0 && (
+                <span className="text-xs text-gray-500 uppercase tracking-wide">Unlabeled</span>
+              )}
+              {record.tags.map((tag) => (
+                <span
+                  key={tag}
+                  className="px-2 py-1 rounded-full border border-gray-300 text-xs uppercase tracking-wide text-gray-700"
+                >
+                  {tag.replace(/_/g, ' ')}
+                </span>
+              ))}
+            </div>
           </div>
         </header>
 
@@ -132,6 +137,23 @@ export default async function BlockDetailPage({ params }: PageProps) {
                 totalDensity={totalHotzoneDensity}
               />
             ))}
+          </div>
+        </section>
+
+        <section className="bg-white rounded-none border border-gray-200 p-6 flex flex-col gap-4">
+          <div className="flex items-center justify-between">
+            <div>
+              <h2 className="text-xl font-semibold text-gray-900">Latent explorer</h2>
+              <p className="text-sm text-gray-500">
+                Instanced 3D view of current hotzone embeddings (now-cast)
+              </p>
+            </div>
+            <span className="text-xs uppercase tracking-wide text-gray-500">
+              {hotzones.length} vectors
+            </span>
+          </div>
+          <div className="h-[420px]">
+            <LatentExplorer hotzones={hotzones} />
           </div>
         </section>
 
@@ -280,6 +302,53 @@ export default async function BlockDetailPage({ params }: PageProps) {
   );
 }
 
+interface BlockDetailResponse {
+  record: StoredBlockSummary;
+  payload: any;
+  rawBlock: Record<string, any>;
+  anomaly: ReturnType<typeof computeAnomalyScore>;
+  regime: ReturnType<typeof summarizeBehaviorRegime>;
+  chainMeta: ReturnType<typeof getChainMetadata>;
+  lendingTransactions: LendingTransactionEvidence[];
+}
+
+async function loadBlockDetail(
+  chain: string,
+  height: number,
+): Promise<BlockDetailResponse | null> {
+  if (isRemoteDataEnabled()) {
+    try {
+      return await fetchFromDataApi<BlockDetailResponse>(`/blocks/${chain}/${height}`);
+    } catch (error) {
+      console.warn('[blocks] remote fetch failed, attempting local fallback', error);
+    }
+  }
+  const record = getBlockSummary(chain, height);
+  if (!record) {
+    return null;
+  }
+  const payload = JSON.parse(readFileSync(record.summaryPath, 'utf-8'));
+  const rawBlock = JSON.parse(readFileSync(record.blockPath, 'utf-8'));
+  const hotzones = payload.hotzones ?? [];
+  const lendingTransactions = findLendingTransactions(record.blockPath, 20);
+  const chainMeta = getChainMetadata(record.chain);
+  const regime = summarizeBehaviorRegime(hotzones);
+  const anomaly = computeAnomalyScore({
+    hotzones,
+    pqResidualStats: payload.pqResidualStats,
+    tagVector: payload.semanticTags ?? [],
+  });
+  return {
+    record,
+    payload,
+    rawBlock,
+    anomaly,
+    regime,
+    chainMeta,
+    lendingTransactions,
+  };
+}
+
 function DetailCard({
   label,
   value,
@@ -295,7 +364,12 @@ function DetailCard({
     <article className="bg-white rounded-none border border-gray-200 p-5">
       <p className="text-xs uppercase tracking-wide text-gray-500">{label}</p>
       {copyValue ? (
-        <CopyableText value={String(value)} label={label} truncateAt={20} className="text-2xl" />
+        <CopyableText
+          value={String(value)}
+          label={label}
+          truncateAt={16}
+          className="text-2xl block w-full truncate mt-2"
+        />
       ) : (
         <p className="text-2xl font-semibold text-gray-900 mt-2">{value}</p>
       )}

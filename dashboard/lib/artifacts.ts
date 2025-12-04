@@ -1,4 +1,5 @@
 import path from 'node:path';
+import { getServerDataApiBase } from './dataSource';
 
 const ARTIFACTS_ROOT =
   process.env.DATA_DIR ?? path.resolve(process.cwd(), '..', 'artifacts');
@@ -14,7 +15,9 @@ export function buildArtifactUrl(fullPath: string | null | undefined) {
     .split(path.sep)
     .map((segment) => encodeURIComponent(segment))
     .join('/');
+  const remoteBase = getServerDataApiBase();
+  if (remoteBase) {
+    return `${remoteBase}/artifacts/${encoded}`;
+  }
   return `/api/artifacts/${encoded}`;
 }
-
-

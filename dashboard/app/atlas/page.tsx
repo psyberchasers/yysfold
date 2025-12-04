@@ -1,7 +1,10 @@
 import Link from 'next/link';
-import HypergraphView3D from '@/components/HypergraphView3D';
+import dynamic from 'next/dynamic';
+const HypergraphView3D = dynamic(() => import('@/components/HypergraphView3D'), { ssr: false });
+const LatentExplorer = dynamic(() => import('@/components/LatentExplorer'), { ssr: false });
 import { AtlasHeatmap } from '@/components/AtlasHeatmap';
 import { filterAtlas, loadAtlasGraph } from '@/lib/atlas';
+import { fetchFromDataApi, isRemoteDataEnabled } from '@/lib/dataSource';
 
 export const metadata = {
   title: 'Atlas · YYSFOLD',
@@ -21,10 +24,20 @@ const RANGE_TO_MS: Record<string, number> = {
 };
 const TAG_OPTIONS = ['AML_ALERT', 'DEX_ACTIVITY', 'NFT_ACTIVITY', 'LENDING_ACTIVITY', 'HIGH_FEE'];
 
-export default function AtlasPage({ searchParams }: AtlasPageProps) {
-  const graph = loadAtlasGraph();
+export default async function AtlasPage({ searchParams }: AtlasPageProps) {
+  const range = typeof searchParams?.range === 'string' ? searchParams.range : '30d';
+  const rawTags = searchParams?.tags;
+  const selectedTags = Array.isArray(rawTags)
+    ? rawTags
+    : typeof rawTags === 'string'
+      ? rawTags
+          .split(',')
+          .map((tag) => tag.trim())
+          .filter(Boolean)
+      : [];
+  const atlasData = await loadFilteredAtlas(range, selectedTags);
 
-  if (!graph || graph.nodes.length === 0) {
+  if (!atlasData) {
     return (
       <main className="min-h-screen bg-white text-gray-900 px-10 py-10">
         <div className="max-w-6xl mx-auto space-y-4">
@@ -43,23 +56,13 @@ export default function AtlasPage({ searchParams }: AtlasPageProps) {
     );
   }
 
-  const range = typeof searchParams?.range === 'string' ? searchParams.range : '30d';
-  const now = Date.now();
-  const from = now - (RANGE_TO_MS[range] ?? RANGE_TO_MS['30d']);
-  const rawTags = searchParams?.tags;
-  const selectedTags = Array.isArray(rawTags)
-    ? rawTags
-    : typeof rawTags === 'string'
-      ? rawTags
-          .split(',')
-          .map((tag) => tag.trim())
-          .filter(Boolean)
-      : [];
-  const filtered = filterAtlas(graph, {
-    from,
-    to: now,
-    tags: selectedTags,
-  });
+  const { graph: filtered, from, to } = atlasData;
+  const latentNodes = filtered.nodes.map((node) => ({
+    id: `cluster-${node.id}`,
+    center: node.centroid ?? [],
+    density: node.avgDensity ?? 0,
+    semanticTags: node.tags ?? [],
+  }));
 
   return (
     <main className="min-h-screen bg-white text-gray-900 px-10 py-10">
@@ -147,8 +150,24 @@ export default function AtlasPage({ searchParams }: AtlasPageProps) {
               <AtlasViewer graph={filtered} />
             </div>
             <div className="h-[520px] border border-gray-200">
-              <AtlasHeatmap nodes={filtered.nodes} from={from} to={now} />
+              <AtlasHeatmap nodes={filtered.nodes} from={from} to={to} />
             </div>
+          </div>
+        </section>
+        <section className="bg-white border border-gray-200 rounded-none p-6 shadow-sm space-y-4">
+          <div className="flex items-center justify-between">
+            <div>
+              <h2 className="text-lg font-semibold text-gray-900">Latent explorer (atlas)</h2>
+              <p className="text-sm text-gray-500">
+                Global cluster centroids rendered with the same 3D context as block detail pages.
+              </p>
+            </div>
+            <span className="text-xs uppercase tracking-wide text-gray-500">
+              {latentNodes.length} clusters
+            </span>
+          </div>
+          <div className="h-[520px] border border-gray-200">
+            <LatentExplorer hotzones={latentNodes} />
           </div>
         </section>
         <section className="bg-white border border-gray-200 rounded-none p-6 shadow-sm space-y-4">
@@ -180,6 +199,35 @@ export default function AtlasPage({ searchParams }: AtlasPageProps) {
       </div>
     </main>
   );
+}
+
+async function loadFilteredAtlas(range: string, tags: string[]) {
+  if (isRemoteDataEnabled()) {
+    try {
+      const params = new URLSearchParams();
+      params.set('range', range);
+      if (tags.length > 0) {
+        params.set('tags', tags.join(','));
+      }
+      return await fetchFromDataApi<{ graph: ReturnType<typeof filterAtlas>; from: number; to: number }>(
+        `/atlas?${params.toString()}`,
+      );
+    } catch (error) {
+      console.warn('[atlas] remote fetch failed, falling back to local data source', error);
+    }
+  }
+  const graph = loadAtlasGraph();
+  if (!graph || graph.nodes.length === 0) {
+    return null;
+  }
+  const now = Date.now();
+  const from = now - (RANGE_TO_MS[range] ?? RANGE_TO_MS['30d']);
+  const filtered = filterAtlas(graph, {
+    from,
+    to: now,
+    tags,
+  });
+  return { graph: filtered, from, to: now };
 }
 
 function AtlasViewer({ graph }: { graph: ReturnType<typeof filterAtlas> }) {

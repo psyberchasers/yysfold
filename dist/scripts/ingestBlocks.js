@@ -2,6 +2,8 @@ import 'dotenv/config';
 import { mkdirSync, writeFileSync, appendFileSync, existsSync } from 'node:fs';
 import { dirname, resolve, join } from 'node:path';
 import { JsonRpcProvider, toQuantity } from 'ethers';
+import { Connection, LAMPORTS_PER_SOL } from '@solana/web3.js';
+import { encode as encodeRlp } from '@ethersproject/rlp';
 import Database from 'better-sqlite3';
 import { computeFoldedBlock } from '../folding/compute.js';
 import { createDeterministicCodebook, loadCodebookFromFile } from '../folding/codebook.js';
@@ -18,6 +20,7 @@ const CHAINS = {
     eth: {
         id: 'eth',
         label: 'Ethereum Mainnet',
+        kind: 'evm',
         rpcUrls: buildRpcList(process.env.ETH_RPC_URL, [
             'https://eth.llamarpc.com',
             'https://rpc.ankr.com/eth',
@@ -28,10 +31,22 @@ const CHAINS = {
     avax: {
         id: 'avax',
         label: 'Avalanche C-Chain',
+        kind: 'evm',
         rpcUrls: buildRpcList(process.env.AVAX_RPC_URL, [
             'https://avalanche.public-rpc.com',
             'https://rpc.ankr.com/avalanche',
             'https://avax.meowrpc.com',
+        ]),
+        defaultCount: 1,
+    },
+    sol: {
+        id: 'sol',
+        label: 'Solana Mainnet',
+        kind: 'solana',
+        rpcUrls: buildRpcList(process.env.SOLANA_RPC_URL, [
+            'https://api.mainnet-beta.solana.com',
+            'https://solana-mainnet.public.blastapi.io',
+            'https://solana-api.projectserum.com',
         ]),
         defaultCount: 1,
     },
@@ -69,90 +84,191 @@ async function main() {
             console.warn(`Skipping unknown chain "${chainId}"`);
             continue;
         }
-        const connection = await connectProvider(chain);
-        let provider = connection.provider;
-        const latest = connection.latest;
         const targetCount = options.count || chain.defaultCount;
-        for (let offset = 0; offset < targetCount; offset += 1) {
-            const height = latest - offset;
-            if (height < 0)
-                break;
-            if (hasRecord(db, chain.id, height)) {
-                // eslint-disable-next-line no-console
-                console.log(`[${chain.id}] Block ${height} already processed. Skipping.`);
-                continue;
+        try {
+            const connection = await connectProvider(chain);
+            if (connection.kind === 'solana') {
+                await processSolanaChain({
+                    chain,
+                    connection,
+                    targetCount,
+                    db,
+                    metricsDb,
+                    codebook,
+                    codebookRoot,
+                    halo2,
+                });
             }
+            else {
+                await processEvmChain({
+                    chain,
+                    connection,
+                    targetCount,
+                    db,
+                    metricsDb,
+                    codebook,
+                    codebookRoot,
+                    halo2,
+                });
+            }
+        }
+        catch (error) {
             // eslint-disable-next-line no-console
-            console.log(`[${chain.id}] Fetching block ${height}`);
-            let block = null;
-            try {
-                block = await fetchBlock(provider, height);
-            }
-            catch (error) {
-                // eslint-disable-next-line no-console
-                console.warn(`[${chain.id}] RPC error while fetching block ${height}: ${formatError(error)}. Rotating endpoint.`);
-                try {
-                    const retryConnection = await connectProvider(chain);
-                    provider = retryConnection.provider;
-                    block = await fetchBlock(provider, height);
-                }
-                catch (retryError) {
-                    // eslint-disable-next-line no-console
-                    console.error(`[${chain.id}] Retry failed for block ${height}: ${formatError(retryError)}`);
-                    continue;
-                }
-            }
-            if (!block) {
-                // eslint-disable-next-line no-console
-                console.warn(`Failed to fetch block ${height} for ${chain.id}`);
-                continue;
-            }
-            const rawBlock = blockToRawBlock(chain.id, block);
-            const paths = writeArtifacts(chain.id, height, rawBlock);
-            const summary = await computeSummary(rawBlock, chain.id, height, codebook, codebookRoot, halo2);
-            const rawTags = summary.rawTags ?? [];
-            saveSummary(paths.summaryPath, summary);
-            saveHotzones(paths.hotzonesPath, summary.hotzones, summary.hypergraph);
-            saveProof(paths.proofPath, summary.proofHex);
-            insertRecord(db, {
-                chain: chain.id,
-                height,
-                blockHash: block.hash ?? '',
-                timestamp: block.timestamp,
-                blockPath: paths.blockPath,
-                summaryPath: paths.summaryPath,
-                hotzonesPath: paths.hotzonesPath,
-                proofPath: paths.proofPath,
-                tags: summary.semanticTags,
-            });
-            // eslint-disable-next-line no-console
-            console.log(`[${chain.id}] Stored block ${height} (commit=${summary.commitments.foldedCommitment.slice(0, 10)}...)`);
-            recordMetrics(metricsDb, {
-                chain: chain.id,
-                height,
-                timestamp: rawBlock.header.timestamp ?? block.timestamp ?? Math.floor(Date.now() / 1000),
-                hotzones: summary.hotzones ?? [],
-                semanticTags: summary.semanticTags ?? [],
-                rawTags,
-                behaviorMetrics: summary.behaviorMetrics,
-                pqResidualStats: summary.pqResidualStats,
-            });
-            recordHotzoneSamples(metricsDb, {
-                chain: chain.id,
-                height,
-                timestamp: rawBlock.header.timestamp ?? block.timestamp ?? Math.floor(Date.now() / 1000),
-                hotzones: summary.hotzones ?? [],
-            });
-            recordPQResidualSamples(metricsDb, {
-                chain: chain.id,
-                height,
-                timestamp: rawBlock.header.timestamp ?? block.timestamp ?? Math.floor(Date.now() / 1000),
-                residuals: summary.pqResiduals ?? [],
-            });
+            console.error(`[${chain.id}] Unable to ingest: ${formatError(error)}`);
         }
     }
     db.close();
     metricsDb.close();
+}
+async function processEvmChain(args) {
+    let provider = args.connection.provider;
+    const latest = args.connection.latest;
+    for (let offset = 0; offset < args.targetCount; offset += 1) {
+        const height = latest - offset;
+        if (height < 0)
+            break;
+        if (hasRecord(args.db, args.chain.id, height)) {
+            // eslint-disable-next-line no-console
+            console.log(`[${args.chain.id}] Block ${height} already processed. Skipping.`);
+            continue;
+        }
+        // eslint-disable-next-line no-console
+        console.log(`[${args.chain.id}] Fetching block ${height}`);
+        let block = null;
+        try {
+            block = await fetchBlock(provider, height);
+        }
+        catch (error) {
+            // eslint-disable-next-line no-console
+            console.warn(`[${args.chain.id}] RPC error while fetching block ${height}: ${formatError(error)}. Rotating endpoint.`);
+            try {
+                const retryConnection = await connectProvider(args.chain);
+                if (retryConnection.kind !== 'evm') {
+                    throw new Error('Unexpected connection kind for EVM chain');
+                }
+                provider = retryConnection.provider;
+                block = await fetchBlock(provider, height);
+            }
+            catch (retryError) {
+                // eslint-disable-next-line no-console
+                console.error(`[${args.chain.id}] Retry failed for block ${height}: ${formatError(retryError)}`);
+                continue;
+            }
+        }
+        if (!block) {
+            // eslint-disable-next-line no-console
+            console.warn(`Failed to fetch block ${height} for ${args.chain.id}`);
+            continue;
+        }
+        const rawBlock = blockToRawBlock(args.chain.id, block);
+        await persistBlock({
+            chainId: args.chain.id,
+            height,
+            rawBlock,
+            db: args.db,
+            metricsDb: args.metricsDb,
+            codebook: args.codebook,
+            codebookRoot: args.codebookRoot,
+            halo2: args.halo2,
+        });
+    }
+}
+async function processSolanaChain(args) {
+    let connection = args.connection.connection;
+    const latest = args.connection.latest;
+    for (let offset = 0; offset < args.targetCount; offset += 1) {
+        const slot = latest - offset;
+        if (slot < 0)
+            break;
+        if (hasRecord(args.db, args.chain.id, slot)) {
+            // eslint-disable-next-line no-console
+            console.log(`[${args.chain.id}] Block ${slot} already processed. Skipping.`);
+            continue;
+        }
+        // eslint-disable-next-line no-console
+        console.log(`[${args.chain.id}] Fetching block ${slot}`);
+        let block = null;
+        try {
+            block = await fetchSolanaBlock(connection, slot);
+        }
+        catch (error) {
+            // eslint-disable-next-line no-console
+            console.warn(`[${args.chain.id}] RPC error while fetching block ${slot}: ${formatError(error)}. Rotating endpoint.`);
+            try {
+                const retryConnection = await connectProvider(args.chain);
+                if (retryConnection.kind !== 'solana') {
+                    throw new Error('Unexpected connection kind for Solana chain');
+                }
+                connection = retryConnection.connection;
+                block = await fetchSolanaBlock(connection, slot);
+            }
+            catch (retryError) {
+                // eslint-disable-next-line no-console
+                console.error(`[${args.chain.id}] Retry failed for block ${slot}: ${formatError(retryError)}`);
+                continue;
+            }
+        }
+        if (!block) {
+            // eslint-disable-next-line no-console
+            console.warn(`[${args.chain.id}] Block ${slot} is unavailable or not finalized. Skipping.`);
+            continue;
+        }
+        const rawBlock = solanaBlockToRawBlock(args.chain.id, slot, block);
+        await persistBlock({
+            chainId: args.chain.id,
+            height: slot,
+            rawBlock,
+            db: args.db,
+            metricsDb: args.metricsDb,
+            codebook: args.codebook,
+            codebookRoot: args.codebookRoot,
+            halo2: args.halo2,
+        });
+    }
+}
+async function persistBlock(args) {
+    const paths = writeArtifacts(args.chainId, args.height, args.rawBlock);
+    const summary = await computeSummary(args.rawBlock, args.chainId, args.height, args.codebook, args.codebookRoot, args.halo2);
+    const rawTags = summary.rawTags ?? [];
+    saveSummary(paths.summaryPath, summary);
+    saveHotzones(paths.hotzonesPath, summary.hotzones, summary.hypergraph);
+    saveProof(paths.proofPath, summary.proofHex);
+    const timestamp = args.rawBlock.header.timestamp ?? Math.floor(Date.now() / 1000);
+    insertRecord(args.db, {
+        chain: args.chainId,
+        height: args.height,
+        blockHash: args.rawBlock.header.hash ?? '',
+        timestamp,
+        blockPath: paths.blockPath,
+        summaryPath: paths.summaryPath,
+        hotzonesPath: paths.hotzonesPath,
+        proofPath: paths.proofPath,
+        tags: summary.semanticTags,
+    });
+    // eslint-disable-next-line no-console
+    console.log(`[${args.chainId}] Stored block ${args.height} (commit=${summary.commitments.foldedCommitment.slice(0, 10)}...)`);
+    recordMetrics(args.metricsDb, {
+        chain: args.chainId,
+        height: args.height,
+        timestamp,
+        hotzones: summary.hotzones ?? [],
+        semanticTags: summary.semanticTags ?? [],
+        rawTags,
+        behaviorMetrics: summary.behaviorMetrics,
+        pqResidualStats: summary.pqResidualStats,
+    });
+    recordHotzoneSamples(args.metricsDb, {
+        chain: args.chainId,
+        height: args.height,
+        timestamp,
+        hotzones: summary.hotzones ?? [],
+    });
+    recordPQResidualSamples(args.metricsDb, {
+        chain: args.chainId,
+        height: args.height,
+        timestamp,
+        residuals: summary.pqResiduals ?? [],
+    });
 }
 function parseArgs(argv) {
     const options = {
@@ -180,11 +296,18 @@ async function connectProvider(chain) {
     const errors = [];
     for (const url of chain.rpcUrls) {
         try {
+            if (chain.kind === 'solana') {
+                const connection = new Connection(url, { commitment: 'confirmed' });
+                const latest = await connection.getSlot('confirmed');
+                // eslint-disable-next-line no-console
+                console.log(`[${chain.id}] Connected to RPC ${url}`);
+                return { kind: 'solana', connection, latest };
+            }
             const provider = new JsonRpcProvider(url);
             const latest = await provider.getBlockNumber();
             // eslint-disable-next-line no-console
             console.log(`[${chain.id}] Connected to RPC ${url}`);
-            return { provider, latest };
+            return { kind: 'evm', provider, latest };
         }
         catch (error) {
             const message = formatError(error);
@@ -197,6 +320,125 @@ async function connectProvider(chain) {
 }
 async function fetchBlock(provider, height) {
     return (await provider.send('eth_getBlockByNumber', [toQuantity(height), true]));
+}
+async function fetchSolanaBlock(connection, slot) {
+    return connection.getBlock(slot, {
+        commitment: 'confirmed',
+        rewards: false,
+        maxSupportedTransactionVersion: 0,
+        transactionDetails: 'full',
+    });
+}
+function solanaBlockToRawBlock(chainId, slot, block) {
+    const timestamp = block.blockTime ?? Math.floor(Date.now() / 1000);
+    const headerHash = block.blockhash ?? `slot-${slot}`;
+    const transactions = Array.isArray(block.transactions)
+        ? block.transactions
+        : [];
+    return {
+        header: {
+            height: slot,
+            hash: headerHash,
+            parentHash: block.previousBlockhash ?? '',
+            stateRoot: headerHash,
+            txRoot: headerHash,
+            receiptsRoot: headerHash,
+            timestamp,
+            headerRlp: headerHash,
+        },
+        transactions: transactions.map((tx) => mapSolanaTransaction(tx)),
+        executionTraces: [],
+        witnessData: {
+            slot,
+            chain: chainId,
+        },
+    };
+}
+function mapSolanaTransaction(entry) {
+    if (!entry)
+        return {};
+    const transaction = entry?.transaction ?? {};
+    const message = transaction.message ?? {};
+    const signatures = Array.isArray(transaction.signatures) ? transaction.signatures : [];
+    const signature = signatures[0] ?? '';
+    const meta = entry?.meta ?? {};
+    const accountKeys = extractSolanaAccountKeys(message);
+    const sender = accountKeys[0] ?? '';
+    const receiver = accountKeys[1] ?? '';
+    const lamportDelta = computeLamportDelta(meta);
+    const amountLamports = Math.abs(lamportDelta);
+    const primaryProgram = extractSolanaProgramId(message) ?? '';
+    const instruction = Array.isArray(message.instructions) ? message.instructions[0] : null;
+    const dataSize = typeof instruction?.data === 'string'
+        ? instruction.data.length
+        : Array.isArray(instruction?.data)
+            ? instruction.data.length
+            : 0;
+    return {
+        hash: signature,
+        amountWei: amountLamports,
+        amountEth: amountLamports / LAMPORTS_PER_SOL,
+        fee: meta.fee ?? 0,
+        gasUsed: meta.computeUnitsConsumed ?? 0,
+        gasPrice: 0,
+        nonce: 0,
+        status: meta.err ? 'failed' : 'success',
+        chainId: 101,
+        sender,
+        receiver,
+        contractType: 'SOLANA_PROGRAM',
+        dataSize,
+        functionSelector: primaryProgram,
+    };
+}
+function extractSolanaAccountKeys(message) {
+    if (!message)
+        return [];
+    if (Array.isArray(message.accountKeys) && message.accountKeys.length > 0) {
+        return message.accountKeys.map((key) => toBase58String(key)).filter(Boolean);
+    }
+    if (Array.isArray(message.staticAccountKeys) && message.staticAccountKeys.length > 0) {
+        return message.staticAccountKeys.map((key) => toBase58String(key)).filter(Boolean);
+    }
+    return [];
+}
+function extractSolanaProgramId(message) {
+    if (!message)
+        return null;
+    const instructions = message.instructions;
+    if (Array.isArray(instructions) && instructions.length > 0) {
+        const instr = instructions[0];
+        if (typeof instr.programId === 'string') {
+            return instr.programId;
+        }
+        if (typeof instr.programIdIndex === 'number' && Array.isArray(message.accountKeys)) {
+            const account = message.accountKeys[instr.programIdIndex];
+            return account ? toBase58String(account) : null;
+        }
+        if (instr.programId && typeof instr.programId.toBase58 === 'function') {
+            return instr.programId.toBase58();
+        }
+    }
+    return null;
+}
+function toBase58String(value) {
+    if (typeof value === 'string')
+        return value;
+    if (value && typeof value === 'object') {
+        const maybe = value;
+        if (typeof maybe.toBase58 === 'function')
+            return maybe.toBase58();
+        if (maybe.pubkey && typeof maybe.pubkey.toBase58 === 'function')
+            return maybe.pubkey.toBase58();
+    }
+    return '';
+}
+function computeLamportDelta(meta) {
+    const pre = Array.isArray(meta?.['preBalances']) ? meta['preBalances'] : [];
+    const post = Array.isArray(meta?.['postBalances']) ? meta['postBalances'] : [];
+    if (pre.length === 0 || post.length === 0)
+        return 0;
+    return (pre[0] ?? 0) - (post[0] ?? 0);
 }
 function formatError(error) {
     if (error instanceof Error)
@@ -438,10 +680,13 @@ export function blockToRawBlock(chainId, block) {
     return {
         header: {
             height: Number(block.number),
-            prevStateRoot: block.parentHash ?? '',
-            newStateRoot: block.stateRoot ?? block.hash ?? '',
+            hash: block.hash ?? '',
+            parentHash: block.parentHash ?? '',
+            stateRoot: block.stateRoot ?? block.hash ?? '',
+            txRoot: block.transactionsRoot ?? '',
+            receiptsRoot: block.receiptsRoot ?? '',
             timestamp: Number(block.timestamp),
-            txMerkleRoot: block.transactionsRoot ?? '',
+            headerRlp: encodeHeaderRlp(block),
         },
         transactions: transactions.map((tx) => {
             const gasLimit = parseQuantity(tx.gas ?? tx.gasLimit ?? 0);
@@ -492,6 +737,66 @@ export function blockToRawBlock(chainId, block) {
             ],
         },
     };
+}
+function encodeHeaderRlp(block) {
+    const fields = [
+        normalizeHex(block.parentHash),
+        normalizeHex(block.sha3Uncles ?? block.unclesHash ?? '0x'),
+        normalizeHex(block.miner ?? block.coinbase ?? '0x'),
+        normalizeHex(block.stateRoot ?? '0x'),
+        normalizeHex(block.transactionsRoot ?? '0x'),
+        normalizeHex(block.receiptsRoot ?? '0x'),
+        normalizeHex(block.logsBloom ?? '0x'),
+        normalizeQuantity(block.difficulty ?? 0),
+        normalizeQuantity(block.number ?? 0),
+        normalizeQuantity(block.gasLimit ?? 0),
+        normalizeQuantity(block.gasUsed ?? 0),
+        normalizeQuantity(block.timestamp ?? 0),
+        normalizeHex(block.extraData ?? '0x'),
+        normalizeHex(block.mixHash ?? block.prevRandao ?? '0x'),
+        normalizeHex(block.nonce ?? '0x'),
+    ];
+    if (block.baseFeePerGas !== null && block.baseFeePerGas !== undefined) {
+        fields.push(normalizeQuantity(block.baseFeePerGas));
+    }
+    if (block.withdrawalsRoot) {
+        fields.push(normalizeHex(block.withdrawalsRoot));
+    }
+    if (block.blobGasUsed !== null && block.blobGasUsed !== undefined) {
+        fields.push(normalizeQuantity(block.blobGasUsed));
+    }
+    if (block.excessBlobGas !== null && block.excessBlobGas !== undefined) {
+        fields.push(normalizeQuantity(block.excessBlobGas));
+    }
+    if (block.parentBeaconBlockRoot) {
+        fields.push(normalizeHex(block.parentBeaconBlockRoot));
+    }
+    if (block.requestsHash) {
+        fields.push(normalizeHex(block.requestsHash));
+    }
+    return encodeRlp(fields);
+}
+function normalizeHex(value) {
+    if (typeof value === 'string' && value.length > 0) {
+        if (value === '0x0' || value === '0x00')
+            return '0x';
+        return ensureEvenHex(value);
+    }
+    return '0x';
+}
+function normalizeQuantity(value) {
+    if (value === undefined || value === null) {
+        return '0x';
+    }
+    const hex = toQuantity(value);
+    if (hex === '0x0')
+        return '0x';
+    return ensureEvenHex(hex);
+}
+function ensureEvenHex(hex) {
+    if (hex === '0x')
+        return hex;
+    return hex.length % 2 === 0 ? hex : `0x0${hex.slice(2)}`;
 }
 function parseQuantity(value) {
     if (typeof value === 'number')
@@ -579,6 +884,7 @@ async function computeSummary(rawBlock, chain, height, codebook, codebookRoot, h
         rawTags,
         semanticTags,
         behaviorMetrics,
+        headerRlp: rawBlock.header.headerRlp,
         publicInputs: proof.publicInputs,
         proofHex: Buffer.from(proof.proofBytes).toString('hex'),
     };

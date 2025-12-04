@@ -1,0 +1,19 @@
+# build artifacts
+dist
+.next
+dashboard/.next
+
+# dependencies
+node_modules
+dashboard/node_modules
+
+# local state
+.git
+.gitignore
+.cursor
+artifacts
+*.log
+tmp
+temp
+.DS_Store
+
