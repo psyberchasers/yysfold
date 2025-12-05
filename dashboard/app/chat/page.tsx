@@ -2,6 +2,8 @@ import Link from 'next/link';
 import { listSources } from '@/lib/blocks';
 import { ChatPanel } from '@/components/ChatPanel';
 
+export const dynamic = 'force-dynamic';
+
 export default function ChatPage() {
   const sources = listSources();
   return (

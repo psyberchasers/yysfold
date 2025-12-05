@@ -3,6 +3,8 @@ import { getLatestBlockSummary } from '@/lib/blocks';
 import { readLatestMempoolSnapshots } from '@/lib/mempool';
 import { readLatestPredictions } from '@/lib/predictions';
 
+export const dynamic = 'force-dynamic';
+
 export async function GET(_request: NextRequest) {
   const encoder = new TextEncoder();
   const stream = new ReadableStream({

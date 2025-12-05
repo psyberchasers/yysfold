@@ -2,6 +2,8 @@ import { NextResponse } from 'next/server';
 import { getLatestBlockSummary } from '@/lib/blocks';
 import { readFileSync } from 'node:fs';
 
+export const dynamic = 'force-dynamic';
+
 export async function GET() {
   const summary = getLatestBlockSummary();
   if (!summary) {
