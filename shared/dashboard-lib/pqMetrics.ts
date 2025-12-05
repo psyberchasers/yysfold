@@ -1,5 +1,3 @@
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-type Database = any;
 import { getMetricsDatabase } from './db.js';
 import { summarizeResiduals, type ResidualStats } from '../../analytics/residuals.js';
 
@@ -61,7 +59,8 @@ export function queryPQResidualHistogram(options: PQHistogramOptions = {}): PQHi
 }
 
 function fetchResiduals(
-  db: Database.Database,
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  db: any,
   filters: { from: number; to: number; chain?: string },
 ): number[] {
   const baseSql = `
