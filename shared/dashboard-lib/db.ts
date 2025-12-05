@@ -1,8 +1,14 @@
 import { existsSync } from 'node:fs';
 import path from 'node:path';
 
-// Dynamic import to avoid build errors when better-sqlite3 isn't available (e.g., Vercel)
-let Database: typeof import('better-sqlite3') | null = null;
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+let Database: any = null;
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+let db: any = null;
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+let metricsDb: any = null;
+
+// Dynamic require to avoid build errors when better-sqlite3 isn't available (e.g., Vercel)
 try {
   // eslint-disable-next-line @typescript-eslint/no-require-imports
   Database = require('better-sqlite3');
@@ -10,11 +16,7 @@ try {
   // better-sqlite3 not available - dashboard will use API instead
 }
 
-type DatabaseInstance = import('better-sqlite3').Database;
-let db: DatabaseInstance | null = null;
-let metricsDb: DatabaseInstance | null = null;
-
-export function getDatabase(): DatabaseInstance {
+export function getDatabase() {
   if (db) return db;
   if (!Database) {
     throw new Error('SQLite not available. Use DATA_API_URL to fetch from API instead.');
@@ -25,7 +27,7 @@ export function getDatabase(): DatabaseInstance {
   return db;
 }
 
-export function getMetricsDatabase(): DatabaseInstance {
+export function getMetricsDatabase() {
   if (metricsDb) return metricsDb;
   if (!Database) {
     throw new Error('SQLite not available. Use DATA_API_URL to fetch from API instead.');
