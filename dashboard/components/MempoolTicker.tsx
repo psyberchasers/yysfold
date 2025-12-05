@@ -38,7 +38,7 @@ export function MempoolTicker({ initial }: { initial: MempoolSnapshot[] }) {
             >
               <div className="flex items-center justify-between">
                 <div className="font-semibold uppercase">{snap.chain}</div>
-                <span className="text-xs text-emerald-700">{formatRelative(snap.fetchedAt)}</span>
+                <span className="text-xs text-emerald-700" suppressHydrationWarning>{formatRelative(snap.fetchedAt)}</span>
               </div>
               <p className="text-xs text-emerald-800">
                 {pressureLabel} · {snap.txCount} tx · {snap.avgGasPriceGwei} gwei ·{' '}

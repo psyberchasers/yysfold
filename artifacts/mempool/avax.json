@@ -1,0 +1,17 @@
+{
+  "chain": "avax",
+  "fetchedAt": 1764935082,
+  "pseudoHeight": 73150456,
+  "txCount": 29,
+  "avgGasPriceGwei": 1,
+  "maxGasPriceGwei": 30,
+  "totalValueEth": 3.8858,
+  "tags": [],
+  "anomalyScore": 0.1,
+  "highlights": [
+    "Normal"
+  ],
+  "deltaTx": -1,
+  "deltaGas": 1,
+  "deltaValue": -0.30556449669532393
+}

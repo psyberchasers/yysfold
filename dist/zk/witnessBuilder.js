@@ -1,4 +1,3 @@
-import { blake3 } from '@noble/hashes/blake3';
 import { pqDecode } from '../folding/pq.js';
 import { buildPublicInputs } from './publicInputs.js';
 export function buildCircuitWitness(raw, artifact, codebook) {
@@ -10,16 +9,19 @@ export function buildCircuitWitness(raw, artifact, codebook) {
         foldedVectors: artifact.foldedBlock.foldedVectors,
         pqIndices: artifact.pqCode.indices,
         pqVectors,
+        blockHash: raw.header.hash ?? '',
+        txRoot: raw.header.txRoot ?? '',
+        stateRoot: raw.header.stateRoot ?? '',
+        headerRlp: raw.header.headerRlp,
     };
 }
 export async function proveFoldedBlock(raw, artifact, codebook, params, backend) {
     const witness = buildCircuitWitness(raw, artifact, codebook);
-    const txMerkleRoot = raw.header.txMerkleRoot ?? deriveTxMerkleRoot(raw);
     const publicInputs = buildPublicInputs({
-        prevStateRoot: raw.header.prevStateRoot,
-        newStateRoot: raw.header.newStateRoot,
+        prevStateRoot: raw.header.parentHash ?? '',
+        newStateRoot: raw.header.stateRoot ?? '',
         blockHeight: raw.header.height,
-        txMerkleRoot,
+        txMerkleRoot: raw.header.txRoot ?? '',
         commitments: artifact.commitments,
         codebookRoot: params.codebookRoot,
     });
@@ -31,8 +33,4 @@ export async function proveFoldedBlock(raw, artifact, codebook, params, backend)
 }
 export async function verifyFoldedBlock(proof, params, backend) {
     return backend.verify({ proof, params });
-}
-function deriveTxMerkleRoot(raw) {
-    const payload = JSON.stringify(raw.transactions);
-    return Buffer.from(blake3(Buffer.from(payload))).toString('hex');
 }

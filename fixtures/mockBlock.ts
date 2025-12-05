@@ -1,4 +1,5 @@
 import { RawBlock } from '../folding/index.js';
+import { hexlify, keccak256, toUtf8Bytes } from 'ethers';
 import { createSeededRandom } from '../utils/random.js';
 
 export interface MockBlockOptions {
@@ -37,12 +38,18 @@ export function generateMockBlock(options: MockBlockOptions = {}): RawBlock {
     bundles: Array.from({ length: opts.witnessBundles }, (_, index) => createMockWitnessBundle(index, rand)),
   };
 
+  const headerPayload = toUtf8Bytes(`${opts.seed}:${height}:${opts.txCount}`);
+  const headerRlp = hexlify(headerPayload);
+  const blockHash = keccak256(headerPayload);
   return {
     header: {
       height,
-      prevStateRoot: randomHex(rand, 32),
-      newStateRoot: randomHex(rand, 32),
-      txMerkleRoot: randomHex(rand, 32),
+      hash: blockHash,
+      parentHash: `0x${randomHex(rand, 32)}`,
+      stateRoot: `0x${randomHex(rand, 32)}`,
+      txRoot: `0x${randomHex(rand, 32)}`,
+      receiptsRoot: `0x${randomHex(rand, 32)}`,
+      headerRlp,
       timestamp,
     },
     transactions,

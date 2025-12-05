@@ -33,7 +33,7 @@ export function BlockProjection({ hotzones }: BlockProjectionProps) {
           data={points}
           fill="#14b8a6"
           shape="circle"
-          line={{ stroke: '#14b8a6', strokeWidth: 1, type: 'joint' }}
+          line={{ stroke: '#14b8a6', strokeWidth: 1 }}
         />
       </ScatterChart>
     </ResponsiveContainer>

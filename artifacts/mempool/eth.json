@@ -1,0 +1,19 @@
+{
+  "chain": "eth",
+  "fetchedAt": 1764935082,
+  "pseudoHeight": 23946535,
+  "txCount": 206,
+  "avgGasPriceGwei": 0,
+  "maxGasPriceGwei": 10,
+  "totalValueEth": 23.14061897731552,
+  "tags": [
+    "NFT_ACTIVITY"
+  ],
+  "anomalyScore": 0.45,
+  "highlights": [
+    "Heavy throughput"
+  ],
+  "deltaTx": 164,
+  "deltaGas": 0,
+  "deltaValue": 19.48440388149424
+}

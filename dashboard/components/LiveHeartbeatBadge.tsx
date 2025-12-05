@@ -7,6 +7,7 @@ interface HeartbeatState {
   chain: string | null;
   height: number | null;
   timestamp: number | null;
+  serverTime: number | null;
 }
 
 export default function LiveHeartbeatBadge() {
@@ -14,6 +15,7 @@ export default function LiveHeartbeatBadge() {
     chain: null,
     height: null,
     timestamp: null,
+    serverTime: null,
   });
   const [connected, setConnected] = useState(false);
 
@@ -26,6 +28,7 @@ export default function LiveHeartbeatBadge() {
         chain: detail.chain,
         height: detail.height,
         timestamp: detail.timestamp,
+        serverTime: detail.serverTime ?? null,
       });
     };
     window.addEventListener(HEARTBEAT_EVENT, handler as EventListener);
@@ -35,7 +38,7 @@ export default function LiveHeartbeatBadge() {
   }, []);
 
   const relative =
-    state.timestamp != null ? formatRelative(state.timestamp) : connected ? 'just now' : 'offline';
+    state.serverTime != null ? formatRelative(state.serverTime) : connected ? 'just now' : 'offline';
 
   return (
     <div className="flex items-center gap-3 text-xs uppercase tracking-wide text-gray-500">
@@ -47,7 +50,7 @@ export default function LiveHeartbeatBadge() {
         <span className={`h-2 w-2 rounded-full ${connected ? 'bg-green-500' : 'bg-gray-400'}`} />
         Live
       </span>
-      <span className="normal-case text-gray-600">
+      <span className="normal-case text-gray-600" suppressHydrationWarning>
         Updated {relative}
         {state.chain ? ` · ${state.chain} #${state.height ?? '—'}` : ''}
       </span>

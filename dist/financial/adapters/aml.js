@@ -1,3 +1,5 @@
+import { createHash } from 'crypto';
+import { hexlify, keccak256, toUtf8Bytes } from 'ethers';
 export const amlAdapter = {
     name: 'aml',
     source: 'aml',
@@ -26,13 +28,21 @@ export const amlAdapter = {
             alertType: alert.alertType,
             riskScore: alert.riskScore,
         }));
+        const hashSeed = batch.batchId ?? `aml-${height}`;
+        const pseudoHash = (label) => `0x${createHash('sha256').update(`${hashSeed}-${label}`).digest('hex')}`;
+        const headerPayload = toUtf8Bytes(`${hashSeed}:${timestamp}:${alerts.length}`);
+        const headerRlp = hexlify(headerPayload);
+        const blockHash = keccak256(headerPayload);
         return {
             header: {
                 height,
-                prevStateRoot: batch.batchId ?? 'aml-batch',
-                newStateRoot: `aml-${height}`,
+                hash: blockHash,
+                parentHash: pseudoHash('parent'),
+                stateRoot: pseudoHash('state'),
+                txRoot: pseudoHash('tx'),
+                receiptsRoot: pseudoHash('receipts'),
                 timestamp,
-                txMerkleRoot: '',
+                headerRlp,
             },
             transactions,
             executionTraces: alerts.map((alert, index) => ({

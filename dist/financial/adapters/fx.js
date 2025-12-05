@@ -1,3 +1,5 @@
+import { createHash } from 'crypto';
+import { hexlify, keccak256, toUtf8Bytes } from 'ethers';
 export const fxAdapter = {
     name: 'fx',
     source: 'fx',
@@ -25,13 +27,21 @@ export const fxAdapter = {
             pair: trade.pair,
             spreadPips: trade.spreadPips ?? 0,
         }));
+        const hashSeed = batch.window ?? `fx-${height}`;
+        const pseudoHash = (label) => `0x${createHash('sha256').update(`${hashSeed}-${label}`).digest('hex')}`;
+        const headerPayload = toUtf8Bytes(`${hashSeed}:${timestamp}:${trades.length}`);
+        const headerRlp = hexlify(headerPayload);
+        const blockHash = keccak256(headerPayload);
         return {
             header: {
                 height,
-                prevStateRoot: batch.window ?? 'fx-window',
-                newStateRoot: `fx-${height}`,
+                hash: blockHash,
+                parentHash: pseudoHash('parent'),
+                stateRoot: pseudoHash('state'),
+                txRoot: pseudoHash('tx'),
+                receiptsRoot: pseudoHash('receipts'),
                 timestamp,
-                txMerkleRoot: '',
+                headerRlp,
             },
             transactions,
             executionTraces: trades.map((trade, index) => ({

@@ -104,4 +104,3 @@ fn write_config(path: &Path, config: &KeyConfig) -> Result<()> {
     serde_json::to_writer_pretty(file, config)?;
     Ok(())
 }
-

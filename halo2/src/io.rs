@@ -9,6 +9,8 @@ pub struct WitnessData {
     pub folded_vectors: Vec<Vec<f64>>,
     #[serde(rename = "pqVectors")]
     pub pq_vectors: Vec<Vec<f64>>,
+    #[serde(rename = "headerRlp")]
+    pub header_rlp: Option<String>,
 }
 
 pub fn load_witness<P: AsRef<Path>>(path: P) -> Result<WitnessData> {
@@ -17,4 +19,3 @@ pub fn load_witness<P: AsRef<Path>>(path: P) -> Result<WitnessData> {
     let witness = serde_json::from_reader(reader)?;
     Ok(witness)
 }
-

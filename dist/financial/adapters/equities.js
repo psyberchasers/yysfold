@@ -1,3 +1,5 @@
+import { createHash } from 'crypto';
+import { hexlify, keccak256, toUtf8Bytes } from 'ethers';
 export const equitiesAdapter = {
     name: 'equities',
     source: 'equities',
@@ -26,13 +28,21 @@ export const equitiesAdapter = {
             assetClass: 'EQUITY',
             liquidityScore: Math.min(1, trade.volume / 1_000_000),
         }));
+        const hashSeed = batch.window ?? `equities-${height}`;
+        const pseudoHash = (label) => `0x${createHash('sha256').update(`${hashSeed}-${label}`).digest('hex')}`;
+        const headerPayload = toUtf8Bytes(`${hashSeed}:${timestamp}:${trades.length}`);
+        const headerRlp = hexlify(headerPayload);
+        const blockHash = keccak256(headerPayload);
         return {
             header: {
                 height,
-                prevStateRoot: batch.window ?? 'equities-window',
-                newStateRoot: `equities-${height}`,
+                hash: blockHash,
+                parentHash: pseudoHash('parent'),
+                stateRoot: pseudoHash('state'),
+                txRoot: pseudoHash('tx'),
+                receiptsRoot: pseudoHash('receipts'),
                 timestamp,
-                txMerkleRoot: '',
+                headerRlp,
             },
             transactions,
             executionTraces: trades.map((trade, index) => ({

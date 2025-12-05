@@ -18,6 +18,7 @@ export async function GET(_request: NextRequest) {
           chain: latest?.chain ?? null,
           height: latest?.height ?? null,
           timestamp: latest?.timestamp ?? null,
+          serverTime: Math.floor(Date.now() / 1000),
           mempool: readLatestMempoolSnapshots(),
           predictions: readLatestPredictions(),
         });

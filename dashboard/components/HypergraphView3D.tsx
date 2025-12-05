@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useRef, useEffect, useState } from 'react';
-import ForceGraph3D, { ForceGraph3DInstance } from 'react-force-graph-3d';
+import ForceGraph3D from 'react-force-graph-3d';
 import * as THREE from 'three';
 
 interface HypergraphNode {
@@ -40,13 +40,14 @@ type GraphLink = {
 const sphereGeometry = new THREE.SphereGeometry(4, 24, 24);
 
 export default function HypergraphView3D({ nodes, edges }: HypergraphView3DProps) {
-  const graphRef = useRef<ForceGraph3DInstance>();
+  const graphRef = useRef(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const [dimensions, setDimensions] = useState({ width: 600, height: 420 });
   const graphData = useMemo(() => buildGraphData(nodes, edges), [nodes, edges]);
 
   useEffect(() => {
-    graphRef.current?.zoomToFit(400, 80);
+    const graph = graphRef.current as { zoomToFit?: (ms: number, px: number) => void } | null;
+    graph?.zoomToFit?.(400, 80);
   }, [graphData]);
 
   useEffect(() => {
@@ -75,7 +76,7 @@ export default function HypergraphView3D({ nodes, edges }: HypergraphView3DProps
   return (
     <div ref={containerRef} className="h-full w-full overflow-hidden">
       <ForceGraph3D
-        ref={graphRef}
+        ref={graphRef as unknown as React.MutableRefObject<undefined>}
         graphData={graphData}
         width={Math.max(dimensions.width, 300)}
         height={Math.max(dimensions.height, 240)}
@@ -90,7 +91,7 @@ export default function HypergraphView3D({ nodes, edges }: HypergraphView3DProps
         nodeThreeObject={(node: GraphNode) => buildNodeObject(node)}
         nodeThreeObjectExtend
         linkWidth={(link: GraphLink) => 0.3 + link.normalizedWeight * 2.5}
-        linkOpacity={(link: GraphLink) => 0.18 + link.normalizedWeight * 0.5}
+        linkOpacity={0.6}
         linkColor={(link: GraphLink) => {
           const opacity = 0.5 + link.normalizedWeight * 0.4;
           return `rgba(99,102,241,${Math.min(opacity, 0.9)})`;

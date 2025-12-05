@@ -120,7 +120,7 @@ export default async function Page({ searchParams }: PageProps) {
       : recent;
 
   const totalHotzoneDensity =
-    hotzones.reduce((sum, zone) => sum + Number(zone?.density ?? 0), 0) || 1;
+    hotzones.reduce((sum: number, zone: { density?: number }) => sum + Number(zone?.density ?? 0), 0) || 1;
   const initialPrediction =
     predictions.find((prediction) => prediction.chain === summary.chain) ?? predictions[0] ?? null;
 
@@ -441,10 +441,10 @@ export default async function Page({ searchParams }: PageProps) {
                 <ChainChip
                   key={option}
                   label={option === 'ALL' ? 'All chains' : option.toUpperCase()}
-                  active={
+                  active={Boolean(
                     (!chainFilter && option === 'ALL') ||
                     (chainFilter && chainFilter.toLowerCase() === option.toLowerCase())
-                  }
+                  )}
                   href={
                     option === 'ALL'
                       ? buildQueryHref({ tag: tagFilter })

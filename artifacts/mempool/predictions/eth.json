@@ -1,0 +1,12 @@
+{
+  "chain": "eth",
+  "tags": [
+    "NFT_ACTIVITY"
+  ],
+  "confidence": 0.47,
+  "etaSeconds": 8,
+  "reasons": [
+    "NFT transfers"
+  ],
+  "generatedAt": 1764935082
+}

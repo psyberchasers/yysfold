@@ -1,13 +1,18 @@
 import { describe, it, expect } from 'vitest';
+import { hexlify, keccak256, toUtf8Bytes } from 'ethers';
 import { computeFoldedBlock } from '../compute.js';
 import { createDeterministicCodebook } from '../codebook.js';
+const SAMPLE_HEADER = toUtf8Bytes('sample-header');
 const SAMPLE_BLOCK = {
     header: {
         height: 123456,
-        prevStateRoot: '0xprev',
-        newStateRoot: '0xnext',
+        hash: keccak256(SAMPLE_HEADER),
+        parentHash: '0xparent',
+        stateRoot: '0xstate',
+        txRoot: '0xtxroot',
+        receiptsRoot: '0xreceipts',
         timestamp: 1_700_000_000,
-        txMerkleRoot: '0xtx',
+        headerRlp: hexlify(SAMPLE_HEADER),
     },
     transactions: Array.from({ length: 4 }, (_, idx) => ({
         hash: `0xtx${idx}`,

@@ -1,0 +1,12 @@
+{
+  "chain": "avax",
+  "tags": [
+    "MIXED_ACTIVITY"
+  ],
+  "confidence": 0.27,
+  "etaSeconds": 10,
+  "reasons": [
+    "Steady state"
+  ],
+  "generatedAt": 1764935082
+}

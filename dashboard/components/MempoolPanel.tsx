@@ -54,7 +54,7 @@ export function MempoolPanel({ initial }: { initial: MempoolSnapshot[] }) {
             >
               <div className="flex items-center justify-between text-sm text-gray-900">
                 <div className="font-semibold uppercase">{snapshot.chain}</div>
-                <div className="text-gray-500 text-xs">
+                <div className="text-gray-500 text-xs" suppressHydrationWarning>
                   Est. #{snapshot.pseudoHeight} · {formatRelative(snapshot.fetchedAt)}
                 </div>
               </div>

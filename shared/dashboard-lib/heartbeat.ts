@@ -6,6 +6,7 @@ export interface HeartbeatEventPayload {
   chain: string | null;
   height: number | null;
   timestamp: number | null;
+  serverTime: number | null;
   mempool: MempoolSnapshot[];
   predictions: PredictionSignal[];
 }

@@ -25,12 +25,12 @@
     "foldedCommitment": "94aeb146106518472b6e69fd4910ab4d7e1ae4fa5f7aa6abd82c43aa8ed02a09",
     "pqCommitment": "47219e38a17f5a9afbce2f913884215082e2e9d20528840d73390a09fe5242cb"
   },
+  "headerRlp": "0xf8...",
   "proof": {
     "publicInputs": {
-      "prevStateRoot": "6400ad4bf6e7e244a16099dd4813ae3d4df1a69028cb3ecd67bd04e0470e3c10",
-      "newStateRoot": "8845f6d99ae41b39815b3695746b9193da8c1b5b8db417d3d87925b9b7d311a3",
-      "blockHeight": 10000,
-      "txMerkleRoot": "778dea4c1fe4f79d6c1d79bb7a3c38840e7a5260a0929c6f886602be28a7daa6",
+      "blockHash": "af5a0c8d03d1a66b34eab8d0c5d31e3ac27b4148e571debe8d9f9a36ec32d61f",
+      "txRoot": "778dea4c1fe4f79d6c1d79bb7a3c38840e7a5260a0929c6f886602be28a7daa6",
+      "stateRoot": "8845f6d99ae41b39815b3695746b9193da8c1b5b8db417d3d87925b9b7d311a3",
       "foldedCommitment": "94aeb146106518472b6e69fd4910ab4d7e1ae4fa5f7aa6abd82c43aa8ed02a09",
       "pqCommitment": "47219e38a17f5a9afbce2f913884215082e2e9d20528840d73390a09fe5242cb",
       "codebookRoot": "7a8b40145d2a168451abc723dd5c7a4517608f975b2bd1b220886057597c5a8d"

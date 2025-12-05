@@ -4,12 +4,10 @@ use anyhow::Result;
 use clap::Parser;
 use halo2_proofs::{
     plonk::verify_proof,
-    poly::kzg::{
-        commitment::KZGCommitmentScheme,
-        multiopen::VerifierGWC,
-        strategy::SingleStrategy,
-    },
     poly::commitment::ParamsProver,
+    poly::kzg::{
+        commitment::KZGCommitmentScheme, multiopen::VerifierGWC, strategy::SingleStrategy,
+    },
     transcript::{Blake2bRead, Challenge255, TranscriptReadBuffer},
 };
 use halo2curves::bn256::{Bn256, Fr, G1Affine};
@@ -44,8 +42,7 @@ fn main() -> Result<()> {
     let mut proof_bytes = Vec::new();
     File::open(&args.proof)?.read_to_end(&mut proof_bytes)?;
 
-    let mut transcript =
-        Blake2bRead::<_, G1Affine, Challenge255<_>>::init(&proof_bytes[..]);
+    let mut transcript = Blake2bRead::<_, G1Affine, Challenge255<_>>::init(&proof_bytes[..]);
 
     verify_proof::<
         KZGCommitmentScheme<Bn256>,
@@ -63,4 +60,3 @@ fn main() -> Result<()> {
 
     Ok(())
 }
-
