@@ -1,4 +1,5 @@
-import type Database from 'better-sqlite3';
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+type Database = any;
 import { getMetricsDatabase } from './db.js';
 import { summarizeResiduals, type ResidualStats } from '../../analytics/residuals.js';
 
