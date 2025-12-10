@@ -4,7 +4,7 @@
   "installCommand": "npm install",
   "buildCommand": "npm run build",
   "env": {
-    "NEXT_PUBLIC_API_URL": "https://yysfold.onrender.com",
-    "API_URL": "https://yysfold.onrender.com"
+    "DATA_API_URL": "https://yysfold.onrender.com",
+    "NEXT_PUBLIC_DATA_API_URL": "https://yysfold.onrender.com"
   }
 }
