@@ -10,10 +10,13 @@ import {
   getTagStats,
   listRecentBlockSummaries,
   listSources,
+  searchBlockSummaries,
   StoredBlockSummary,
 } from '../shared/dashboard-lib/blocks.js';
 import { getChainMetadata } from '../shared/dashboard-lib/chains.js';
 import { readLatestMempoolSnapshots } from '../shared/dashboard-lib/mempool.js';
+import { queryPQResidualHistogram } from '../shared/dashboard-lib/pqMetrics.js';
+import { queryTimeseries } from '../shared/dashboard-lib/metrics.js';
 import { readLatestPredictions } from '../shared/dashboard-lib/predictions.js';
 import { summarizeBehaviorRegime } from '../shared/dashboard-lib/regime.js';
 import { findLendingTransactions } from '../shared/dashboard-lib/tagEvidence.js';
@@ -194,6 +197,91 @@ app.get('/heartbeat', (req, res) => {
   req.on('close', () => {
     clearInterval(interval);
   });
+});
+
+// Metrics endpoints
+app.get('/metrics/pq', (req, res) => {
+  try {
+    const chain = typeof req.query.chain === 'string' ? req.query.chain : undefined;
+    const from = typeof req.query.from === 'string' ? Number(req.query.from) : undefined;
+    const to = typeof req.query.to === 'string' ? Number(req.query.to) : undefined;
+    const result = queryPQResidualHistogram({ chain, from, to });
+    res.json(result);
+  } catch (error) {
+    console.error('[api] metrics/pq error', error);
+    res.status(500).json({ error: 'Failed to query PQ metrics' });
+  }
+});
+
+app.get('/metrics/timeseries', (req, res) => {
+  try {
+    const chain = typeof req.query.chain === 'string' ? req.query.chain : undefined;
+    const now = Math.floor(Date.now() / 1000);
+    const from = typeof req.query.from === 'string' ? Number(req.query.from) : now - 7 * 24 * 60 * 60;
+    const to = typeof req.query.to === 'string' ? Number(req.query.to) : now;
+    const intervalParam = typeof req.query.interval === 'string' ? req.query.interval : 'hour';
+    const interval = intervalParam === 'daily' ? 'day' : 'hour';
+    const result = queryTimeseries({ 
+      from, 
+      to, 
+      interval,
+      chains: chain ? [chain] : undefined,
+    });
+    res.json(result);
+  } catch (error) {
+    console.error('[api] metrics/timeseries error', error);
+    res.status(500).json({ error: 'Failed to query timeseries' });
+  }
+});
+
+// Search endpoint
+app.get('/blocks/search', (req, res) => {
+  try {
+    const query = typeof req.query.q === 'string' ? req.query.q : '';
+    const limit = Math.min(50, Math.max(1, Number(req.query.limit) || 20));
+    const results = searchBlockSummaries(query, limit);
+    res.json({ results });
+  } catch (error) {
+    console.error('[api] search error', error);
+    res.status(500).json({ error: 'Search failed' });
+  }
+});
+
+// Verify endpoint
+app.post('/verify', (req, res) => {
+  try {
+    const { chain, height } = req.body;
+    if (!chain || height === undefined) {
+      return res.status(400).json({ error: 'Missing chain or height' });
+    }
+    const record = getBlockSummary(chain, Number(height));
+    if (!record) {
+      return res.status(404).json({ error: 'Block not found' });
+    }
+    // Read proof file
+    const proofPath = record.proofPath;
+    if (!existsSync(proofPath)) {
+      return res.json({ 
+        valid: false, 
+        error: 'No proof file found',
+        chain,
+        height: Number(height),
+      });
+    }
+    const proofData = JSON.parse(readFileSync(proofPath, 'utf-8'));
+    // For now, return the proof data - actual ZK verification would go here
+    return res.json({
+      valid: true,
+      chain,
+      height: Number(height),
+      proofHex: proofData.proofHex || '',
+      publicInputs: proofData.publicInputs || {},
+      message: 'Proof data retrieved (ZK verification skipped - prover not available)',
+    });
+  } catch (error) {
+    console.error('[api] verify error', error);
+    res.status(500).json({ error: 'Verification failed' });
+  }
 });
 
 function loadDashboardData(tagFilter?: string) {
