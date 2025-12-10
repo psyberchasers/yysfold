@@ -19,5 +19,9 @@ ENV NODE_ENV=production
 RUN apk add --no-cache libstdc++
 
 COPY --from=build /app /app
+
+# Make startup script executable
+RUN chmod +x /app/scripts/start-combined.sh
+
 EXPOSE 8080
-CMD ["node", "dist/api/server.js"]
+CMD ["/app/scripts/start-combined.sh"]
