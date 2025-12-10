@@ -543,7 +543,8 @@ function createHalo2Context(): Halo2Context {
 }
 
 function initDatabase() {
-  const dbPath = resolve('artifacts', 'index.db');
+  const dataDir = process.env.DATA_DIR ?? resolve('artifacts');
+  const dbPath = join(dataDir, 'index.db');
   mkdirSync(dirname(dbPath), { recursive: true });
   const db = new Database(dbPath);
   db.exec(`
@@ -570,7 +571,8 @@ function initDatabase() {
 }
 
 function initMetricsDatabase() {
-  const dbPath = resolve('artifacts', 'telemetry.db');
+  const dataDir = process.env.DATA_DIR ?? resolve('artifacts');
+  const dbPath = join(dataDir, 'telemetry.db');
   mkdirSync(dirname(dbPath), { recursive: true });
   const db = new Database(dbPath);
   db.exec(`
@@ -1014,7 +1016,8 @@ function readInputData(tx: Record<string, unknown> | TransactionResponse): strin
 }
 
 function writeArtifacts(chain: string, height: number, rawBlock: RawBlock) {
-  const dir = resolve('artifacts', 'blocks', chain, `${height}`);
+  const dataDir = process.env.DATA_DIR ?? resolve('artifacts');
+  const dir = join(dataDir, 'blocks', chain, `${height}`);
   mkdirSync(dir, { recursive: true });
   const blockPath = join(dir, 'raw-block.json');
   writeFileSync(blockPath, JSON.stringify(rawBlock, null, 2), 'utf-8');
@@ -1057,15 +1060,34 @@ async function computeSummary(
       ...hotzones.flatMap((hz) => hz.semanticTags ?? []),
     ]),
   );
-  const params = {
-    provingKeyPath: halo2.provingKeyPath,
-    verificationKeyPath: halo2.verificationKeyPath,
-    curve: 'bn254' as const,
-    backend: 'halo2' as const,
+  appendTrainingVectors(chain, height, artifact.foldedBlock.foldedVectors);
+
+  // Skip ZK proving if disabled (e.g., in cloud where Halo2 binary isn't available)
+  const skipZk = process.env.SKIP_ZK_PROVING === '1' || process.env.SKIP_ZK_PROVING === 'true';
+  let proofHex = '';
+  let zkPublicInputs = {
+    prevStateRoot: rawBlock.header.parentHash ?? '',
+    newStateRoot: rawBlock.header.stateRoot ?? '',
+    blockHeight: rawBlock.header.height,
+    txMerkleRoot: rawBlock.header.txRoot ?? '',
+    foldedCommitment: artifact.commitments.foldedCommitment,
+    pqCommitment: artifact.commitments.pqCommitment,
     codebookRoot,
   };
-  const proof = await proveFoldedBlock(rawBlock, artifact, codebook, params, halo2.backend);
-  appendTrainingVectors(chain, height, artifact.foldedBlock.foldedVectors);
+
+  if (!skipZk) {
+    const params = {
+      provingKeyPath: halo2.provingKeyPath,
+      verificationKeyPath: halo2.verificationKeyPath,
+      curve: 'bn254' as const,
+      backend: 'halo2' as const,
+      codebookRoot,
+    };
+    const proof = await proveFoldedBlock(rawBlock, artifact, codebook, params, halo2.backend);
+    zkPublicInputs = proof.publicInputs;
+    proofHex = Buffer.from(proof.proofBytes).toString('hex');
+  }
+
   return {
     codebookRoot,
     commitments: artifact.commitments,
@@ -1079,8 +1101,8 @@ async function computeSummary(
     semanticTags,
     behaviorMetrics,
     headerRlp: rawBlock.header.headerRlp,
-    publicInputs: proof.publicInputs,
-    proofHex: Buffer.from(proof.proofBytes).toString('hex'),
+    publicInputs: zkPublicInputs,
+    proofHex,
   };
 }
 
@@ -1097,7 +1119,8 @@ function saveProof(path: string, proofHex: string) {
 }
 
 function appendTrainingVectors(chain: string, height: number, vectors: number[][]) {
-  const trainingDir = resolve('artifacts', 'training');
+  const dataDir = process.env.DATA_DIR ?? resolve('artifacts');
+  const trainingDir = join(dataDir, 'training');
   mkdirSync(trainingDir, { recursive: true });
   const filePath = join(trainingDir, 'foldedVectors.jsonl');
   const entry = JSON.stringify({ chain, height, vectors });

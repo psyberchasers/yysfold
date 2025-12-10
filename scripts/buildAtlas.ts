@@ -35,7 +35,16 @@ function main() {
   const outputDir = path.join(dataDir, 'atlas');
   const outputPath = path.join(outputDir, 'graph.json');
 
-  const db = new Database(telemetryPath, { readonly: true, fileMustExist: true });
+  let db;
+  try {
+    db = new Database(telemetryPath, { readonly: true, fileMustExist: true });
+  } catch (error) {
+    // Database doesn't exist yet - write empty atlas and exit gracefully
+    console.log('[atlas] No telemetry database found, writing empty atlas');
+    mkdirSync(outputDir, { recursive: true });
+    writeFileSync(outputPath, JSON.stringify({ nodes: [], edges: [], meta: { generatedAt: Date.now(), sliceSeconds: SLICE_SECONDS } }, null, 2));
+    return;
+  }
   const rows = db
     .prepare(`
       SELECT chain, height, timestamp, hotzone_id as hotzoneId, density, radius, vector, tags
