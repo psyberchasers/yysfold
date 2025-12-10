@@ -1,5 +1,9 @@
-import { existsSync } from 'node:fs';
+import { existsSync, mkdirSync } from 'node:fs';
 import path from 'node:path';
+import { createRequire } from 'node:module';
+
+// Use createRequire for CommonJS modules in ESM context
+const require = createRequire(import.meta.url);
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 let Database: any = null;
@@ -10,7 +14,6 @@ let metricsDb: any = null;
 
 // Dynamic require to avoid build errors when better-sqlite3 isn't available (e.g., Vercel)
 try {
-  // eslint-disable-next-line @typescript-eslint/no-require-imports
   Database = require('better-sqlite3');
 } catch {
   // better-sqlite3 not available - dashboard will use API instead
@@ -23,6 +26,10 @@ export function getDatabase() {
   }
   const dataDir = process.env.DATA_DIR ?? path.resolve('..', 'artifacts');
   const dbPath = path.join(dataDir, 'index.db');
+  
+  // Ensure directory exists
+  mkdirSync(path.dirname(dbPath), { recursive: true });
+  
   db = new Database(dbPath, { readonly: true, fileMustExist: true });
   return db;
 }
@@ -34,6 +41,10 @@ export function getMetricsDatabase() {
   }
   const dataDir = process.env.DATA_DIR ?? path.resolve('..', 'artifacts');
   const dbPath = path.join(dataDir, 'telemetry.db');
+  
+  // Ensure directory exists
+  mkdirSync(path.dirname(dbPath), { recursive: true });
+  
   if (!existsSync(dbPath)) {
     metricsDb = new Database(':memory:');
     metricsDb.exec(`
