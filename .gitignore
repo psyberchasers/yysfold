@@ -7,3 +7,10 @@ artifacts/blocks/
 artifacts/halo2-workspace/
 artifacts/*.db
 halo2/target/
+
+# LaTeX aux files
+*.aux
+*.log
+*.out
+*.toc
+*.synctex.gz

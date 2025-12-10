@@ -1,16 +1,11 @@
 import { NextResponse } from 'next/server';
-import { filterAtlas, loadAtlasGraph } from '@/lib/atlas';
+import { fetchAtlas } from '@/lib/api';
+
+export const dynamic = 'force-dynamic';
 
 export async function GET(request: Request) {
-  const graph = loadAtlasGraph();
-  if (!graph) {
-    return NextResponse.json({ error: 'Atlas not built. Run npm run atlas:build.' }, { status: 503 });
-  }
-
   const url = new URL(request.url);
-  const from = parseNumber(url.searchParams.get('from'));
-  const to = parseNumber(url.searchParams.get('to'));
-  const limit = parseInt(url.searchParams.get('limit') ?? '', 10);
+  const range = url.searchParams.get('range') ?? '30d';
   const tagParams = url.searchParams.getAll('tags');
   const tags =
     tagParams.length > 0
@@ -23,19 +18,11 @@ export async function GET(request: Request) {
             .filter(Boolean) as string[])
         : [];
 
-  const filtered = filterAtlas(graph, {
-    from: from ?? undefined,
-    to: to ?? undefined,
-    tags,
-    limit: Number.isFinite(limit) && limit > 0 ? limit : undefined,
-  });
+  const data = await fetchAtlas(range, tags);
+  
+  if (!data) {
+    return NextResponse.json({ error: 'Atlas not available' }, { status: 503 });
+  }
 
-  return NextResponse.json(filtered);
+  return NextResponse.json(data.graph);
 }
-
-function parseNumber(value: string | null) {
-  if (!value) return undefined;
-  const parsed = Number(value);
-  return Number.isFinite(parsed) ? parsed : undefined;
-}
-

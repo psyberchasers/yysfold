@@ -1,48 +1,50 @@
 import { NextRequest } from 'next/server';
-import { getLatestBlockSummary } from '@/lib/blocks';
-import { readLatestMempoolSnapshots } from '@/lib/mempool';
-import { readLatestPredictions } from '@/lib/predictions';
+import { getHeartbeatURL } from '@/lib/api';
 
 export const dynamic = 'force-dynamic';
+export const runtime = 'edge'; // Use edge runtime for streaming
 
 export async function GET(_request: NextRequest) {
-  const encoder = new TextEncoder();
-  const stream = new ReadableStream({
-    start(controller) {
-      const send = () => {
-        const latest = getLatestBlockSummary();
-        const digest = latest
-          ? `${latest.chain}-${latest.height}-${latest.blockHash}`
-          : null;
-        const payload = JSON.stringify({
-          status: latest ? 'ok' : 'empty',
-          digest,
-          chain: latest?.chain ?? null,
-          height: latest?.height ?? null,
-          timestamp: latest?.timestamp ?? null,
-          serverTime: Math.floor(Date.now() / 1000),
-          mempool: readLatestMempoolSnapshots(),
-          predictions: readLatestPredictions(),
-        });
-        controller.enqueue(encoder.encode(`data: ${payload}\n\n`));
-      };
+  // Proxy to Render backend
+  const backendUrl = getHeartbeatURL();
+  
+  try {
+    const backendResponse = await fetch(backendUrl, {
+      headers: {
+        'Accept': 'text/event-stream',
+      },
+    });
 
-      send();
-      const interval = setInterval(send, 5000);
+    if (!backendResponse.ok || !backendResponse.body) {
+      return new Response(
+        `data: ${JSON.stringify({ status: 'error', message: 'Backend unavailable' })}\n\n`,
+        {
+          headers: {
+            'Content-Type': 'text/event-stream',
+            'Cache-Control': 'no-store',
+          },
+        }
+      );
+    }
 
-      return () => {
-        clearInterval(interval);
-        controller.close();
-      };
-    },
-  });
-
-  return new Response(stream, {
-    headers: {
-      'Content-Type': 'text/event-stream',
-      Connection: 'keep-alive',
-      'Cache-Control': 'no-store',
-    },
-  });
+    // Stream the response from backend
+    return new Response(backendResponse.body, {
+      headers: {
+        'Content-Type': 'text/event-stream',
+        'Cache-Control': 'no-store',
+        'Connection': 'keep-alive',
+      },
+    });
+  } catch (error) {
+    console.error('[heartbeat] Proxy error:', error);
+    return new Response(
+      `data: ${JSON.stringify({ status: 'error', message: 'Connection failed' })}\n\n`,
+      {
+        headers: {
+          'Content-Type': 'text/event-stream',
+          'Cache-Control': 'no-store',
+        },
+      }
+    );
+  }
 }
-

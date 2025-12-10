@@ -1,18 +1,17 @@
 import { NextResponse } from 'next/server';
-import { getLatestBlockSummary } from '@/lib/blocks';
-import { readFileSync } from 'node:fs';
+import { fetchDashboardData } from '@/lib/api';
 
 export const dynamic = 'force-dynamic';
 
 export async function GET() {
-  const summary = getLatestBlockSummary();
-  if (!summary) {
+  const data = await fetchDashboardData();
+  
+  if (!data?.summary) {
     return NextResponse.json({ error: 'No ingested blocks yet' }, { status: 404 });
   }
-  const summaryPayload = JSON.parse(readFileSync(summary.summaryPath, 'utf-8'));
+  
   return NextResponse.json({
-    ...summary,
-    summary: summaryPayload,
+    ...data.summary,
+    summary: data.payload,
   });
 }
-

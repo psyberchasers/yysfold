@@ -1,0 +1,42 @@
+# Ignore artifacts folder - dashboard fetches from Render API
+artifacts/
+artifacts/**
+
+# Ignore halo2 rust code
+halo2/
+halo2/**
+
+# Ignore training data
+*.jsonl
+
+# Ignore local node modules outside dashboard
+node_modules/
+
+# Ignore dist folder
+dist/
+
+# Ignore test files
+**/*.test.ts
+**/__tests__/
+
+# Ignore docs
+docs/
+
+# Ignore scripts (run on Render, not Vercel)
+scripts/
+
+# Ignore analytics (run on Render)
+analytics/
+
+# Ignore financial adapters (run on Render)
+financial/
+
+# Ignore zk (run on Render)
+zk/
+
+# Ignore api (run on Render)
+api/
+
+# Ignore fixtures
+fixtures/
+

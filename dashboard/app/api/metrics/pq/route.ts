@@ -1,20 +1,19 @@
 import { NextResponse } from 'next/server';
-import { queryPQResidualHistogram } from '../../../../lib/pqMetrics';
 
-export async function GET(request: Request) {
-  const { searchParams } = new URL(request.url);
-  const chain = searchParams.get('chain') ?? undefined;
-  const hoursParam = Number(searchParams.get('hours') ?? '24');
-  const bucketsParam = Number(searchParams.get('buckets') ?? '24');
-  const now = Math.floor(Date.now() / 1000);
-  const hours = Number.isFinite(hoursParam) && hoursParam > 0 ? hoursParam : 24;
-  const from = now - Math.floor(hours * 60 * 60);
-  const result = queryPQResidualHistogram({
-    chain: chain === 'all' ? undefined : chain,
-    from,
-    to: now,
-    bucketCount: Number.isFinite(bucketsParam) && bucketsParam > 0 ? bucketsParam : 24,
+export const dynamic = 'force-dynamic';
+
+export async function GET(_request: Request) {
+  // Metrics require local SQLite database - not available on Vercel
+  // TODO: Add metrics endpoint to Render API
+  return NextResponse.json({
+    histogram: [],
+    stats: {
+      average: 0,
+      p50: 0,
+      p95: 0,
+      max: 0,
+      count: 0,
+    },
+    note: 'Metrics available on Render backend',
   });
-  return NextResponse.json(result);
 }
-

@@ -1,0 +1,590 @@
+\documentclass[11pt,a4paper]{article}
+
+% Packages
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage{amsmath,amssymb}
+\usepackage{booktabs}
+\usepackage{array}
+\usepackage{longtable}
+\usepackage{hyperref}
+\usepackage{xcolor}
+\usepackage{geometry}
+\usepackage{enumitem}
+\usepackage{fancyhdr}
+\usepackage{titlesec}
+\usepackage{graphicx}
+\usepackage{listings}
+\usepackage{fancybox}
+\usepackage{tcolorbox}
+
+% Page geometry
+\geometry{margin=1in}
+
+% Colors
+\definecolor{darkblue}{RGB}{0,51,102}
+\definecolor{linkblue}{RGB}{0,102,204}
+\definecolor{codebg}{RGB}{245,245,245}
+\definecolor{codeframe}{RGB}{200,200,200}
+\definecolor{taggreen}{RGB}{34,139,34}
+\definecolor{warnorange}{RGB}{255,140,0}
+
+% Hyperref setup
+\hypersetup{
+    colorlinks=true,
+    linkcolor=darkblue,
+    urlcolor=linkblue,
+    citecolor=darkblue
+}
+
+% Code listing style
+\lstset{
+    backgroundcolor=\color{codebg},
+    frame=single,
+    rulecolor=\color{codeframe},
+    basicstyle=\ttfamily\small,
+    breaklines=true,
+    columns=fullflexible
+}
+
+% tcolorbox for UI mockups
+\tcbuselibrary{skins,breakable}
+\newtcolorbox{uibox}[1][]{
+    colback=white,
+    colframe=darkblue,
+    fonttitle=\bfseries,
+    title=#1,
+    breakable
+}
+
+\newtcolorbox{infobox}[1][]{
+    colback=blue!5,
+    colframe=darkblue,
+    fonttitle=\bfseries,
+    title=#1
+}
+
+% Header/Footer
+\pagestyle{fancy}
+\fancyhf{}
+\rhead{YYSFold System Walkthrough}
+\lhead{\leftmark}
+\rfoot{Page \thepage}
+
+% Title
+\title{%
+    \textbf{YYSFold System Walkthrough}\\[0.5em]
+    \large A Complete Guide to the Dashboard and Pipeline
+}
+\author{YYSFold Team}
+\date{\today}
+
+\begin{document}
+
+\maketitle
+
+\begin{abstract}
+This document provides a comprehensive walkthrough of the YYSFold blockchain fingerprinting system. It explains what you see on the live dashboard, how each component works, and the complete data pipeline from raw blockchain data to behavioral fingerprints.
+\end{abstract}
+
+\tableofcontents
+\newpage
+
+%==============================================================================
+\section{What Is YYSFold?}
+%==============================================================================
+
+YYSFold is a \textbf{blockchain behavioral fingerprinting system}. It watches blockchain activity in real-time, compresses each block into a compact ``fingerprint,'' identifies unusual patterns (hotzones), and can predict what the next block might look like---all while generating cryptographic proofs that the analysis was done correctly.
+
+\begin{infobox}[Live Demo]
+\textbf{URL:} \url{https://yysfold.ngrok.io}
+\end{infobox}
+
+%==============================================================================
+\section{Dashboard Overview}
+%==============================================================================
+
+This section walks through each element of the dashboard from top to bottom.
+
+%------------------------------------------------------------------------------
+\subsection{Header \& Navigation}
+%------------------------------------------------------------------------------
+
+The header contains:
+\begin{itemize}
+    \item \textbf{YYSFold logo} --- Links to home
+    \item \textbf{Atlas} --- 2D/3D visualization of the vector space
+    \item \textbf{Chat} --- AI assistant for querying block data
+\end{itemize}
+
+%------------------------------------------------------------------------------
+\subsection{Latest Block Fingerprint Card}
+%------------------------------------------------------------------------------
+
+\begin{uibox}[Latest Behavioral Fingerprint]
+\begin{tabular}{ll}
+\textbf{Chain \& Block:} & sol $\cdot$ \#383106448 \\
+\textbf{Timestamp:} & Nov 28, 08:33 \\
+\textbf{Status:} & \textcolor{taggreen}{[Live]} Updated 7s ago \\
+\end{tabular}
+
+\vspace{0.5em}
+\textbf{Tags:}
+\fbox{ASSET} \fbox{SOLANA PROGRAM} \fbox{HIGH THROUGHPUT} \fbox{MIXED ACTIVITY} \fbox{BRIDGE ACTIVITY}
+
+\vspace{0.5em}
+\begin{tabular}{ll}
+\textbf{Block hash:} & EyU8uUGPYrKC8NZk... \\
+\textbf{Artifacts:} & [raw block] [proof] \\
+\textbf{Regime:} & Bridge Activity + Lending Activity \\
+\textbf{Anomaly:} & 0.37 (Typical) \\
+\textbf{Metrics:} & Density: 1058183.24 $\cdot$ PQ: 6.279 $\cdot$ Tags: 5 \\
+\end{tabular}
+\end{uibox}
+
+\begin{table}[h]
+\centering
+\caption{Latest Block Card Elements}
+\begin{tabular}{lp{9cm}}
+\toprule
+\textbf{Element} & \textbf{Description} \\
+\midrule
+sol $\cdot$ \#383106448 & Chain (Solana) and block height \\
+{[Live]} & Real-time SSE connection active \\
+Updated 7s & Time since last heartbeat \\
+Tags (pills) & Semantic behaviors detected in this block \\
+Block hash & Truncated block identifier \\
+{[raw block]} & Link to download the raw block JSON \\
+{[proof]} & Link to the ZK proof artifact \\
+Regime & Dominant behavioral pattern combination \\
+Anomaly: 0.37 & Score from 0--1 (higher = more unusual) \\
+Density & Peak hotzone density (KDE value) \\
+PQ & Average PQ reconstruction error \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsubsection{Anomaly Labels}
+
+\begin{table}[h]
+\centering
+\begin{tabular}{lll}
+\toprule
+\textbf{Score Range} & \textbf{Label} & \textbf{Meaning} \\
+\midrule
+$< 0.45$ & Typical & Normal activity \\
+$0.45 - 0.75$ & Unusual & Notable patterns \\
+$> 0.75$ & Rare & Potential anomaly \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+%------------------------------------------------------------------------------
+\subsection{Predicted Next Block Card}
+%------------------------------------------------------------------------------
+
+\begin{uibox}[Predicted Next Block]
+\begin{tabular}{ll}
+\textbf{Chain:} & SOL \\
+\textbf{Confidence:} & 24\% \\
+\textbf{Predicted Tags:} & MIXED ACTIVITY \\
+\textbf{ETA:} & $\sim$10s $\cdot$ 9:10:41 AM \\
+\textbf{Reason:} & Steady state \\
+\end{tabular}
+\end{uibox}
+
+\textbf{How predictions work:}
+\begin{enumerate}
+    \item Keep a rolling history of recent mempool snapshots
+    \item Compute trends: gas slope, transaction delta, tag frequency changes
+    \item If trends are stable $\rightarrow$ MIXED\_ACTIVITY with low confidence
+    \item If gas spiking + DEX activity $\rightarrow$ HIGH\_FEE + DEX\_ACTIVITY with higher confidence
+\end{enumerate}
+
+%------------------------------------------------------------------------------
+\subsection{Mempool Ticker (Live Feed)}
+%------------------------------------------------------------------------------
+
+\begin{uibox}[Live Mempool]
+\begin{lstlisting}
+08:33:12  ETH  ^ High    142 txs | 45 gwei | 2.1 ETH
+                         DEX surge, gas climbing
+
+08:33:08  SOL  * Normal   89 txs | 0.00025 SOL
+                         Steady state
+
+08:33:02  AVAX v Low      23 txs | 28 nAVAX
+                         Light activity
+\end{lstlisting}
+\end{uibox}
+
+\begin{itemize}
+    \item \textbf{Timestamp} --- When the snapshot was taken
+    \item \textbf{Chain} --- Which blockchain
+    \item \textbf{Pressure indicator} --- $\triangle$ High / $\bullet$ Normal / $\triangledown$ Low
+    \item \textbf{Stats} --- Pending transaction count, gas price, total value
+    \item \textbf{Highlights} --- Notable patterns detected
+\end{itemize}
+
+\begin{infobox}[Important]
+This is \textbf{NOT} showing confirmed blocks---it's showing the \textbf{mempool} (pending transactions waiting to be included).
+\end{infobox}
+
+%------------------------------------------------------------------------------
+\subsection{Block Detail Page}
+%------------------------------------------------------------------------------
+
+When you click on a block, you see:
+
+\begin{itemize}
+    \item \textbf{Hotzones} --- Up to 16 density clusters, each with tags
+    \item \textbf{Hypergraph Visualization} --- 3D force-directed graph of hotzone relationships
+    \item \textbf{Metrics} --- Transaction count, folded vectors, PQ residuals, commitment hash
+\end{itemize}
+
+\textbf{Hotzones} are regions of high-density activity in the compressed vector space. Each hotzone represents a cluster of similar transaction behaviors.
+
+%------------------------------------------------------------------------------
+\subsection{Atlas Page}
+%------------------------------------------------------------------------------
+
+The Atlas shows \textbf{all hotzones from recent blocks} projected into 2D or 3D space.
+
+\begin{itemize}
+    \item \textbf{Position} --- 2D/3D coordinates from dimensionality reduction
+    \item \textbf{Size} --- Proportional to density
+    \item \textbf{Color} --- Mapped from dominant semantic tag
+    \item \textbf{Edges} --- Hyperedges connecting related hotzones
+\end{itemize}
+
+This visualization lets you see:
+\begin{itemize}
+    \item Clusters of similar behavioral patterns
+    \item How current activity compares to historical norms
+    \item Outliers that don't fit normal patterns
+\end{itemize}
+
+%==============================================================================
+\section{The Pipeline}
+%==============================================================================
+
+This section explains what happens behind the scenes when a new block arrives.
+
+%------------------------------------------------------------------------------
+\subsection{Step 1: Block Ingestion}
+%------------------------------------------------------------------------------
+
+\begin{lstlisting}
+RPC Node --> watchIngest.js --> Raw Block JSON
+\end{lstlisting}
+
+The \textbf{ingestion worker} polls blockchain RPC endpoints every few seconds:
+\begin{itemize}
+    \item \textbf{Ethereum} --- via ETH\_RPC\_URLS
+    \item \textbf{Solana} --- via Solana RPC
+    \item \textbf{Avalanche} --- via AVAX RPC
+\end{itemize}
+
+For each new block, it downloads:
+\begin{itemize}
+    \item Block header (height, timestamp, hash)
+    \item All transactions
+    \item Execution traces (if available)
+    \item State changes
+\end{itemize}
+
+%------------------------------------------------------------------------------
+\subsection{Step 2: Vectorization}
+%------------------------------------------------------------------------------
+
+\begin{lstlisting}
+Raw Block --> vectorizeBlock() --> Vectors
+\end{lstlisting}
+
+Each transaction becomes a \textbf{16-dimensional vector}:
+
+\begin{lstlisting}
+Transaction {amount, fee, gas, ...} 
+    |
+    v
+Vector [0.72, 0.15, 0.33, 0.5, 0.001, ...]
+\end{lstlisting}
+
+\textbf{What gets encoded:}
+\begin{itemize}
+    \item Normalized amounts (0--1 scale)
+    \item Fee levels
+    \item Gas usage
+    \item Contract type (hashed to bucket)
+    \item Asset/token (hashed)
+    \item Sender/receiver patterns
+    \item Timestamp position in day
+\end{itemize}
+
+%------------------------------------------------------------------------------
+\subsection{Step 3: Folding}
+%------------------------------------------------------------------------------
+
+\begin{lstlisting}
+[1000+ vectors] --> foldVectors() --> [6 vectors]
+\end{lstlisting}
+
+We compress all transaction vectors into just \textbf{6 summary vectors}:
+
+\begin{enumerate}
+    \item \textbf{Mean vector} --- Average of all transactions
+    \item \textbf{Variance vector} --- How spread out the values are
+    \item \textbf{Components 1--4} --- Principal directions of variation
+\end{enumerate}
+
+This reduces a block with 1000 transactions from $\sim$16,000 numbers to just 96 numbers.
+
+%------------------------------------------------------------------------------
+\subsection{Step 4: Product Quantization (PQ)}
+%------------------------------------------------------------------------------
+
+\begin{lstlisting}
+[6 vectors] --> pqEncode() --> [6 codes] + residuals
+\end{lstlisting}
+
+Each folded vector is further compressed using a \textbf{codebook}:
+
+\begin{lstlisting}
+Vector [0.72, 0.15, 0.33, 0.5] 
+    |
+    v
+Split into 4 subvectors
+    |
+    v
+Find nearest centroid for each
+    |
+    v
+Code: [142, 87, 203, 56]  (4 bytes instead of 16 floats)
+\end{lstlisting}
+
+The \textbf{residual} is how much error this compression introduces. We track this to ensure quality.
+
+%------------------------------------------------------------------------------
+\subsection{Step 5: Hotzone Detection (KDE)}
+%------------------------------------------------------------------------------
+
+\begin{lstlisting}
+PQ codes --> pqDecode() --> Vectors --> KDE --> Hotzones
+\end{lstlisting}
+
+We reconstruct the vectors and run \textbf{Kernel Density Estimation}:
+
+\begin{lstlisting}
+For each vector:
+    density = sum of Gaussian kernels from all other vectors
+    
+If density > threshold:
+    This is a HOTZONE (cluster of similar activity)
+\end{lstlisting}
+
+Hotzones get \textbf{semantic tags} based on which vector components are high:
+\begin{itemize}
+    \item High component 0 $\rightarrow$ HIGH\_VALUE
+    \item High component 2 $\rightarrow$ DEX\_ACTIVITY
+    \item High component 7 $\rightarrow$ AML\_ALERT
+\end{itemize}
+
+%------------------------------------------------------------------------------
+\subsection{Step 6: Hypergraph Construction}
+%------------------------------------------------------------------------------
+
+\begin{lstlisting}
+Hotzones --> buildHypergraph() --> Graph
+\end{lstlisting}
+
+We connect hotzones that are:
+\begin{itemize}
+    \item Close in vector space (small distance)
+    \item Both high density
+\end{itemize}
+
+This creates a \textbf{graph structure} showing relationships between behavioral clusters.
+
+%------------------------------------------------------------------------------
+\subsection{Step 7: Anomaly Scoring}
+%------------------------------------------------------------------------------
+
+\begin{lstlisting}
+(density, residuals, tags) --> computeAnomalyScore() --> 0.37
+\end{lstlisting}
+
+The anomaly score combines three signals:
+
+\begin{table}[h]
+\centering
+\begin{tabular}{lll}
+\toprule
+\textbf{Component} & \textbf{Weight} & \textbf{What it measures} \\
+\midrule
+Density & 50\% & How concentrated activity is \\
+Residuals & 35\% & How well PQ compression fits \\
+Tags & 15\% & Presence of suspicious tags \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+%------------------------------------------------------------------------------
+\subsection{Step 8: Cryptographic Commitment}
+%------------------------------------------------------------------------------
+
+\begin{lstlisting}
+Fingerprint --> BLAKE3 hash --> Commitment
+\end{lstlisting}
+
+We hash everything to create tamper-proof commitments:
+\begin{itemize}
+    \item \textbf{Folded commitment} --- Hash of the 6 folded vectors
+    \item \textbf{PQ commitment} --- Hash of the PQ codes
+    \item \textbf{Codebook root} --- Hash of the compression codebook
+\end{itemize}
+
+These go into the ZK proof.
+
+%------------------------------------------------------------------------------
+\subsection{Step 9: ZK Proof Generation}
+%------------------------------------------------------------------------------
+
+\begin{lstlisting}
+Witness + Public Inputs --> Halo2 Prover --> Proof
+\end{lstlisting}
+
+If Halo2 is configured, we generate a zero-knowledge proof that:
+\begin{enumerate}
+    \item The vectorization was done correctly
+    \item The folding math is right
+    \item The PQ encoding respects the error bound
+    \item The commitments match
+\end{enumerate}
+
+\begin{infobox}[Current Status]
+\textbf{Currently:} Running mock proofs (placeholder). Real proofs require compiled Halo2 binaries.
+\end{infobox}
+
+%------------------------------------------------------------------------------
+\subsection{Step 10: Storage \& Display}
+%------------------------------------------------------------------------------
+
+\begin{lstlisting}
+Summary + Proof --> SQLite + JSON files --> Dashboard
+\end{lstlisting}
+
+Everything is saved to:
+\begin{itemize}
+    \item \textbf{SQLite database} --- For queries (by chain, tag, time)
+    \item \textbf{JSON files} --- Raw artifacts in \texttt{/artifacts/}
+\end{itemize}
+
+The dashboard reads from these to display the fingerprints.
+
+%==============================================================================
+\section{Services Architecture}
+%==============================================================================
+
+%------------------------------------------------------------------------------
+\subsection{Local Development (via ngrok)}
+%------------------------------------------------------------------------------
+
+\begin{table}[h]
+\centering
+\begin{tabular}{lll}
+\toprule
+\textbf{Service} & \textbf{Port} & \textbf{Purpose} \\
+\midrule
+Next.js Dashboard & 3000 & Web UI \\
+ngrok tunnel & --- & Public URL (yysfold.ngrok.io) \\
+Ingest Worker & --- & Background: fetches blocks \\
+Mempool Worker & --- & Background: watches pending txs \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+%------------------------------------------------------------------------------
+\subsection{Cloud Deployment (Render + Vercel)}
+%------------------------------------------------------------------------------
+
+\begin{table}[h]
+\centering
+\begin{tabular}{lll}
+\toprule
+\textbf{Service} & \textbf{Platform} & \textbf{Purpose} \\
+\midrule
+API & Render & Serves data to frontend \\
+Ingest Worker & Render & Background block ingestion \\
+Mempool Worker & Render & Background mempool watching \\
+Dashboard & Vercel & Static Next.js frontend \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+%==============================================================================
+\section{Key Files Reference}
+%==============================================================================
+
+\begin{table}[h]
+\centering
+\begin{tabular}{lp{8cm}}
+\toprule
+\textbf{File} & \textbf{Purpose} \\
+\midrule
+\texttt{scripts/ingestBlocks.ts} & Main ingestion pipeline \\
+\texttt{scripts/mempoolWatch.ts} & Mempool polling + predictions \\
+\texttt{folding/vectorize.ts} & Transaction $\rightarrow$ Vector \\
+\texttt{folding/fold.ts} & Vectors $\rightarrow$ Folded Block \\
+\texttt{folding/pq.ts} & Product Quantization \\
+\texttt{analytics/hotzones.ts} & KDE + hotzone detection \\
+\texttt{analytics/hypergraph.ts} & Graph construction \\
+\texttt{zk/halo2Backend.ts} & ZK proof interface \\
+\texttt{dashboard/app/page.tsx} & Main dashboard page \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+%==============================================================================
+\section{Quick Explanation Script}
+%==============================================================================
+
+\begin{infobox}[For Verbal Presentations]
+``YYSFold takes raw blockchain blocks and compresses them into behavioral fingerprints. Each block with thousands of transactions gets reduced to just 6 summary vectors using statistical folding and product quantization.
+
+We then run kernel density estimation to find `hotzones'---clusters of similar transaction patterns---and tag them semantically (DEX activity, bridge transfers, potential AML alerts, etc.).
+
+The anomaly score tells us if a block looks normal or unusual compared to baseline. The mempool feed shows pending transactions in real-time, and we use trend analysis to predict what the next block might look like.
+
+Everything is cryptographically committed with BLAKE3 hashes, and we can optionally generate zero-knowledge proofs that the analysis was done correctly---so you can verify the fingerprint without re-running all the math yourself.''
+\end{infobox}
+
+%==============================================================================
+\section{Glossary}
+%==============================================================================
+
+\begin{longtable}{lp{9cm}}
+\toprule
+\textbf{Term} & \textbf{Definition} \\
+\midrule
+\endhead
+\textbf{Fingerprint} & Compact representation of a block's behavior \\
+\textbf{Folding} & Compressing many vectors into few summary vectors \\
+\textbf{PQ} & Product Quantization---vector compression using a codebook \\
+\textbf{KDE} & Kernel Density Estimation---finding dense regions \\
+\textbf{Hotzone} & A cluster of similar transactions \\
+\textbf{Hypergraph} & Graph where edges can connect 2+ nodes \\
+\textbf{Anomaly Score} & 0--1 measure of how unusual a block is \\
+\textbf{Mempool} & Pool of pending (unconfirmed) transactions \\
+\textbf{ZK Proof} & Cryptographic proof of correct computation \\
+\textbf{Commitment} & Hash that binds data without revealing it \\
+\textbf{SSE} & Server-Sent Events---real-time data streaming \\
+\textbf{RPC} & Remote Procedure Call---API to blockchain nodes \\
+\bottomrule
+\end{longtable}
+
+\end{document}
+
+
+
+
+

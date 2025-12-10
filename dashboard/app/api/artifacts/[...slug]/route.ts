@@ -1,29 +1,33 @@
 import { NextResponse } from 'next/server';
-import { readFile } from 'node:fs/promises';
-import path from 'node:path';
-
-const ARTIFACTS_ROOT =
-  process.env.DATA_DIR ?? path.resolve(process.cwd(), '..', 'artifacts');
+import { API_BASE } from '@/lib/api';
 
 export const dynamic = 'force-dynamic';
 
 export async function GET(
   _request: Request,
-  context: { params: { slug?: string[] } },
+  context: { params: Promise<{ slug?: string[] }> },
 ) {
-  const segments = context.params.slug ?? [];
+  const params = await context.params;
+  const segments = params.slug ?? [];
+  
   if (segments.length === 0) {
     return NextResponse.json({ error: 'Missing artifact path' }, { status: 400 });
   }
-  const requestedPath = path.join(ARTIFACTS_ROOT, ...segments);
-  const normalized = path.normalize(requestedPath);
-  if (!normalized.startsWith(ARTIFACTS_ROOT)) {
-    return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
-  }
+  
+  // Proxy to Render backend
+  const artifactPath = segments.join('/');
+  const backendUrl = `${API_BASE}/artifacts/${artifactPath}`;
+  
   try {
-    const data = await readFile(normalized);
-    const ext = path.extname(normalized).toLowerCase();
-    const contentType = getContentType(ext);
+    const res = await fetch(backendUrl);
+    
+    if (!res.ok) {
+      return NextResponse.json({ error: 'Not found' }, { status: res.status });
+    }
+    
+    const data = await res.arrayBuffer();
+    const contentType = res.headers.get('content-type') || 'application/octet-stream';
+    
     return new NextResponse(data, {
       status: 200,
       headers: {
@@ -32,18 +36,7 @@ export async function GET(
       },
     });
   } catch (error) {
-    if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
-      return NextResponse.json({ error: 'Not found' }, { status: 404 });
-    }
-    return NextResponse.json({ error: 'Unable to read artifact' }, { status: 500 });
+    console.error('[artifacts] Proxy error:', error);
+    return NextResponse.json({ error: 'Unable to fetch artifact' }, { status: 500 });
   }
 }
-
-function getContentType(ext: string) {
-  if (ext === '.json') return 'application/json';
-  if (ext === '.csv') return 'text/csv';
-  if (ext === '.txt') return 'text/plain';
-  return 'application/octet-stream';
-}
-
-

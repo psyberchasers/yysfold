@@ -1,0 +1,714 @@
+\documentclass[11pt,a4paper]{article}
+
+% Packages
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage{amsmath,amssymb,amsthm}
+\usepackage{mathtools}
+\usepackage{booktabs}
+\usepackage{array}
+\usepackage{hyperref}
+\usepackage{cleveref}
+\usepackage{algorithm}
+\usepackage{algpseudocode}
+\usepackage{graphicx}
+\usepackage{xcolor}
+\usepackage{geometry}
+\usepackage{enumitem}
+\usepackage{fancyhdr}
+\usepackage{titlesec}
+
+% Page geometry
+\geometry{margin=1in}
+
+% Colors
+\definecolor{darkblue}{RGB}{0,51,102}
+\definecolor{linkblue}{RGB}{0,102,204}
+
+% Hyperref setup
+\hypersetup{
+    colorlinks=true,
+    linkcolor=darkblue,
+    urlcolor=linkblue,
+    citecolor=darkblue
+}
+
+% Theorem environments
+\theoremstyle{definition}
+\newtheorem{definition}{Definition}[section]
+\newtheorem{example}{Example}[section]
+
+\theoremstyle{plain}
+\newtheorem{theorem}{Theorem}[section]
+\newtheorem{lemma}[theorem]{Lemma}
+\newtheorem{proposition}[theorem]{Proposition}
+
+\theoremstyle{remark}
+\newtheorem{remark}{Remark}[section]
+
+% Custom commands
+\newcommand{\R}{\mathbb{R}}
+\newcommand{\N}{\mathbb{N}}
+\newcommand{\norm}[1]{\left\|#1\right\|}
+\newcommand{\abs}[1]{\left|#1\right|}
+\newcommand{\inner}[2]{\langle #1, #2 \rangle}
+\newcommand{\vect}[1]{\mathbf{#1}}
+\newcommand{\mat}[1]{\mathbf{#1}}
+\newcommand{\set}[1]{\mathcal{#1}}
+\DeclareMathOperator*{\argmin}{arg\,min}
+\DeclareMathOperator*{\argmax}{arg\,max}
+
+% Header/Footer
+\pagestyle{fancy}
+\fancyhf{}
+\rhead{YYSFold Mathematical Foundations}
+\lhead{\leftmark}
+\rfoot{Page \thepage}
+
+% Title
+\title{%
+    \textbf{YYSFold: Mathematical Foundations}\\[0.5em]
+    \large Blockchain Fingerprinting via Vector Folding,\\
+    Product Quantization, and Zero-Knowledge Proofs
+}
+\author{YYSFold Team}
+\date{\today}
+
+\begin{document}
+
+\maketitle
+
+\begin{abstract}
+This document provides a comprehensive mathematical treatment of the YYSFold blockchain fingerprinting system. We detail the transformation pipeline from raw blockchain data through vectorization, folding, and product quantization to produce compact behavioral fingerprints. We then describe the kernel density estimation approach for hotzone detection, hypergraph construction for structural analysis, and the anomaly scoring framework. Finally, we specify the zero-knowledge proof system that provides cryptographic verifiability of the entire pipeline.
+\end{abstract}
+
+\tableofcontents
+\newpage
+
+%==============================================================================
+\section{Introduction and System Overview}
+%==============================================================================
+
+YYSFold is a blockchain fingerprinting system that compresses high-dimensional transaction data into compact, semantically meaningful representations while preserving cryptographic verifiability through zero-knowledge proofs.
+
+\subsection{Pipeline Architecture}
+
+The system processes blockchain data through the following stages:
+\begin{enumerate}
+    \item \textbf{Vectorization}: Raw transactions, execution traces, and witness data are mapped to fixed-dimensional vectors.
+    \item \textbf{Folding}: Block-level vectors are aggregated into a compact representation via statistical summarization and linear projection.
+    \item \textbf{Product Quantization}: Folded vectors are compressed using a learned codebook with bounded reconstruction error.
+    \item \textbf{Density Analysis}: Kernel density estimation identifies regions of concentrated activity (hotzones).
+    \item \textbf{Hypergraph Construction}: Relationships between hotzones form a structural signature.
+    \item \textbf{Anomaly Scoring}: A composite score flags unusual behavioral patterns.
+    \item \textbf{Cryptographic Commitment}: BLAKE3 hashes bind all transformations.
+    \item \textbf{Zero-Knowledge Proof}: A Halo2-based proof attests to correct computation.
+\end{enumerate}
+
+\begin{definition}[Behavioral Fingerprint]
+A \emph{behavioral fingerprint} of a blockchain block $B$ is the tuple:
+\begin{equation}
+    \mathcal{F}(B) = (F_B, \set{C}, \set{H}, \set{G}, S, \pi)
+\end{equation}
+where $F_B$ is the folded block, $\set{C}$ is the PQ code, $\set{H}$ is the hotzone set, $\set{G}$ is the hypergraph, $S$ is the anomaly score, and $\pi$ is the zero-knowledge proof.
+\end{definition}
+
+%==============================================================================
+\section{Vectorization Layer}
+%==============================================================================
+
+\subsection{Transaction Vectorization}
+
+Each transaction $tx_i$ in a block is mapped to a fixed-dimensional vector $\vect{x}_i \in \R^{d_{tx}}$ where $d_{tx} = 16$.
+
+\begin{definition}[Transaction Vector Map]
+The vectorization function $\phi_{tx}: \text{Tx} \to \R^{16}$ is defined as:
+\begin{equation}
+    \vect{x}_i = \phi_{tx}(tx_i) = \begin{pmatrix}
+        \nu(\text{amount}, M_{\text{amt}}) \\
+        \nu(\text{fee}, M_{\text{fee}}) \\
+        \nu(\text{gasUsed}, M_{\text{gas}}) \\
+        \nu_{\text{idx}}(\text{index}, n) \\
+        \nu(\text{height}, 10^7) \\
+        \tau(\text{timestamp}) \\
+        h(\text{type}, 64) \\
+        h(\text{asset}, 256) \\
+        \nu(\text{nonce}, 10^6) \\
+        \mathbb{1}[\text{status} = \text{success}] \\
+        \nu(\text{slot}, 10^5) \\
+        \nu(\text{chainId}, 10^3) \\
+        \nu(\text{priorityFee}, M_{\text{fee}}) \\
+        h(\text{selector}, 1024) \\
+        h(\text{sender}, 10000) \\
+        h(\text{receiver}, 10000)
+    \end{pmatrix}
+\end{equation}
+\end{definition}
+
+\subsection{Normalization Functions}
+
+\begin{definition}[Linear Normalization]
+For a value $v$ with maximum $M$:
+\begin{equation}
+    \nu(v, M) = \text{clamp}\left(\frac{v}{M}, -1, 1\right)
+\end{equation}
+where $\text{clamp}(x, a, b) = \min(\max(x, a), b)$.
+\end{definition}
+
+\begin{definition}[Index Normalization]
+For an index $i$ in a collection of size $n$:
+\begin{equation}
+    \nu_{\text{idx}}(i, n) = \begin{cases}
+        0 & \text{if } n \leq 1 \\
+        \frac{i}{n-1} & \text{otherwise}
+    \end{cases}
+\end{equation}
+\end{definition}
+
+\begin{definition}[Cyclic Timestamp Normalization]
+For timestamp $t$ with scale $s = 86400$ (seconds per day):
+\begin{equation}
+    \tau(t) = \frac{t \mod (10s)}{10s}
+\end{equation}
+\end{definition}
+
+\begin{definition}[Hash Bucketing]
+For a value $v$ and bucket count $B$:
+\begin{equation}
+    h(v, B) = \frac{\text{hash}(v) \mod B}{B - 1}
+\end{equation}
+where the hash function is the polynomial rolling hash:
+\begin{equation}
+    \text{hash}(s) = \sum_{i=0}^{|s|-1} s[i] \cdot 31^i \mod 2^{32}
+\end{equation}
+\end{definition}
+
+\subsection{State and Witness Vectors}
+
+\begin{definition}[State Vector]
+Each execution trace $\text{trace}_j$ maps to $\vect{s}_j \in \R^{12}$:
+\begin{equation}
+    \vect{s}_j = \phi_{\text{state}}(\text{trace}_j)
+\end{equation}
+with components for balance delta, storage operations, log events, contract hash, gas consumed, etc.
+\end{definition}
+
+\begin{definition}[Witness Vector]
+Each witness bundle $\text{bundle}_k$ maps to $\vect{w}_k \in \R^{8}$:
+\begin{equation}
+    \vect{w}_k = \phi_{\text{witness}}(\text{bundle}_k)
+\end{equation}
+encoding constraint count, degree, gate count, and prover metadata.
+\end{definition}
+
+%==============================================================================
+\section{Folding Operator}
+%==============================================================================
+
+\subsection{Vector Collection}
+
+Given a block $B$, we collect all vectors:
+\begin{equation}
+    \set{V} = \{\vect{x}_1, \ldots, \vect{x}_{n_{tx}}\} \cup \{\vect{s}_1, \ldots, \vect{s}_{n_s}\} \cup \{\vect{w}_1, \ldots, \vect{w}_{n_w}\}
+\end{equation}
+
+Each vector is resized to canonical dimension $d = 16$:
+\begin{equation}
+    \tilde{\vect{v}}_i = \text{resize}(\vect{v}_i, d) \in \R^d
+\end{equation}
+
+\subsection{Statistical Aggregation}
+
+\begin{definition}[Block Mean Vector]
+\begin{equation}
+    \boldsymbol{\mu} = \frac{1}{|\set{V}|} \sum_{i=1}^{|\set{V}|} \tilde{\vect{v}}_i
+\end{equation}
+\end{definition}
+
+\begin{definition}[Block Standard Deviation Vector]
+For each component $j \in [d]$:
+\begin{equation}
+    \sigma_j = \sqrt{\frac{1}{|\set{V}| - 1} \sum_{i=1}^{|\set{V}|} (\tilde{v}_{i,j} - \mu_j)^2}
+\end{equation}
+\end{definition}
+
+\subsection{Component Projection}
+
+Let $\mat{W} \in \R^{k \times d}$ be a fixed projection matrix with $k = 4$ rows (principal directions).
+
+\begin{definition}[Component Vector]
+For row $m$ of $\mat{W}$:
+\begin{equation}
+    \vect{c}_m = \frac{1}{|\set{V}|} \sum_{i=1}^{|\set{V}|} \tilde{\vect{v}}_i \odot \vect{w}_m
+\end{equation}
+where $\odot$ denotes element-wise multiplication.
+\end{definition}
+
+\begin{definition}[Normalized Component]
+\begin{equation}
+    \hat{\vect{c}}_m = \frac{\vect{c}_m}{\norm{\vect{c}_m}_2 + \epsilon}, \quad \epsilon = 10^{-6}
+\end{equation}
+\end{definition}
+
+\subsection{Folded Block}
+
+\begin{definition}[Folded Block]
+The folded block is the set of $k + 2 = 6$ vectors:
+\begin{equation}
+    F_B = \{\boldsymbol{\mu}, \boldsymbol{\sigma}, \hat{\vect{c}}_1, \hat{\vect{c}}_2, \hat{\vect{c}}_3, \hat{\vect{c}}_4\}
+\end{equation}
+\end{definition}
+
+\begin{remark}
+The folding operation reduces a block with $n$ transactions from $O(n \cdot d_{tx})$ to a fixed $6 \cdot 16 = 96$ scalars, independent of block size.
+\end{remark}
+
+%==============================================================================
+\section{Product Quantization}
+%==============================================================================
+
+\subsection{Codebook Structure}
+
+\begin{definition}[PQ Codebook]
+A Product Quantization codebook $\set{C}$ partitions $\R^d$ into $m$ subspaces, each with $K$ centroids:
+\begin{equation}
+    \set{C} = \{C^{(1)}, C^{(2)}, \ldots, C^{(m)}\}
+\end{equation}
+where $C^{(s)} = \{\vect{c}^{(s)}_1, \ldots, \vect{c}^{(s)}_K\} \subset \R^{d/m}$ for each subspace $s$.
+\end{definition}
+
+\textbf{Default Parameters:}
+\begin{itemize}
+    \item $m = 4$ subspaces
+    \item $K = 256$ centroids per subspace
+    \item $d/m = 4$ subvector dimension
+\end{itemize}
+
+\subsection{Encoding Process}
+
+\begin{algorithm}
+\caption{PQ Encoding}
+\begin{algorithmic}[1]
+\Require Folded vector $\vect{f} \in \R^d$, Codebook $\set{C}$
+\Ensure PQ code $(q_1, \ldots, q_m) \in [K]^m$
+\State Split $\vect{f} = [\vect{f}^{(1)} | \vect{f}^{(2)} | \cdots | \vect{f}^{(m)}]$
+\For{$s = 1$ to $m$}
+    \State $q_s \gets \argmin_{k \in [K]} \norm{\vect{f}^{(s)} - \vect{c}^{(s)}_k}_2$
+\EndFor
+\State \Return $(q_1, \ldots, q_m)$
+\end{algorithmic}
+\end{algorithm}
+
+\subsection{Reconstruction}
+
+\begin{definition}[PQ Reconstruction]
+Given code $(q_1, \ldots, q_m)$:
+\begin{equation}
+    \hat{\vect{f}} = [\vect{c}^{(1)}_{q_1} | \vect{c}^{(2)}_{q_2} | \cdots | \vect{c}^{(m)}_{q_m}]
+\end{equation}
+\end{definition}
+
+\subsection{Residual Analysis}
+
+\begin{definition}[Reconstruction Residual]
+\begin{equation}
+    r(\vect{f}) = \norm{\vect{f} - \hat{\vect{f}}}_2
+\end{equation}
+\end{definition}
+
+\begin{definition}[Error Bound Constraint]
+The encoding enforces:
+\begin{equation}
+    r(\vect{f}) \leq \varepsilon, \quad \varepsilon = 0.25 \text{ (default)}
+\end{equation}
+\end{definition}
+
+\begin{definition}[Residual Statistics]
+For a block with residuals $\{r_1, \ldots, r_n\}$:
+\begin{align}
+    \bar{r} &= \frac{1}{n}\sum_{i=1}^{n} r_i & \text{(average)} \\
+    r_{\max} &= \max_{i} r_i & \text{(maximum)} \\
+    r_{95} &= \text{percentile}(\{r_i\}, 0.95) & \text{(95th percentile)}
+\end{align}
+\end{definition}
+
+%==============================================================================
+\section{Kernel Density Estimation and Hotzones}
+%==============================================================================
+
+\subsection{Gaussian Kernel}
+
+\begin{definition}[Gaussian Kernel]
+The radial basis function kernel with bandwidth $h$:
+\begin{equation}
+    K(\vect{x}, \vect{y}; h) = \exp\left(-\frac{\norm{\vect{x} - \vect{y}}_2^2}{2h^2}\right)
+\end{equation}
+Default bandwidth: $h = 0.15$.
+\end{definition}
+
+\subsection{Kernel Density Estimator}
+
+\begin{definition}[KDE]
+For decoded PQ vectors $\{\hat{\vect{f}}_1, \ldots, \hat{\vect{f}}_n\}$, the density at point $\vect{x}$:
+\begin{equation}
+    \hat{p}(\vect{x}) = \frac{1}{n \cdot (h\sqrt{2\pi})^d} \sum_{i=1}^{n} K(\vect{x}, \hat{\vect{f}}_i; h)
+\end{equation}
+\end{definition}
+
+\subsection{Hotzone Detection Algorithm}
+
+\begin{algorithm}
+\caption{Hotzone Detection}
+\begin{algorithmic}[1]
+\Require Decoded vectors $\{\hat{\vect{f}}_i\}$, threshold $\theta$, max zones $k$
+\Ensure Hotzone set $\set{H}$
+\For{$i = 1$ to $n$}
+    \State $\rho_i \gets \hat{p}(\hat{\vect{f}}_i)$ \Comment{Compute density}
+\EndFor
+\State $\set{H}_{\text{cand}} \gets \{i : \rho_i \geq \theta\}$ \Comment{Threshold filter}
+\State $\set{H} \gets \text{top}_k(\set{H}_{\text{cand}}, \rho)$ \Comment{Select top-$k$}
+\For{$j \in \set{H}$}
+    \State $\text{tags}_j \gets \text{deriveTags}(\hat{\vect{f}}_j)$
+    \State Output hotzone $(\hat{\vect{f}}_j, \rho_j, r=2h, \text{tags}_j)$
+\EndFor
+\end{algorithmic}
+\end{algorithm}
+
+\subsection{Semantic Tag Derivation}
+
+Tags are derived from vector component thresholds:
+
+\begin{table}[h]
+\centering
+\begin{tabular}{ccc}
+\toprule
+\textbf{Index} & \textbf{Condition} & \textbf{Tag} \\
+\midrule
+0 & $> 0.65$ & HIGH\_VALUE \\
+1 & $> 0.55$ & FEE\_INTENSIVE \\
+2 & $> 0.55$ & DEX\_ACTIVITY \\
+3 & $> 0.55$ & NFT\_ACTIVITY \\
+4 & $> 0.45$ & BRIDGE\_ACTIVITY \\
+5 & $> 0.50$ & TIME\_CLUSTER \\
+6 & $> 0.50$ & LENDING\_ACTIVITY \\
+7 & $> 0.50$ & AML\_ALERT \\
+8 & $> 0.55$ & MEV\_ACTIVITY \\
+9 & $< -0.45$ & VOLATILITY\_CRUSH \\
+\bottomrule
+\end{tabular}
+\caption{Semantic tag derivation thresholds}
+\label{tab:tags}
+\end{table}
+
+%==============================================================================
+\section{Hypergraph Construction}
+%==============================================================================
+
+\subsection{Pairwise Weight Function}
+
+\begin{definition}[Hotzone Weight]
+For hotzones $H_a = (\vect{c}_a, \rho_a, r_a)$ and $H_b = (\vect{c}_b, \rho_b, r_b)$:
+\begin{equation}
+    w(H_a, H_b) = \max(0, r_a + r_b - d_{ab}) \cdot \sqrt{\rho_a \cdot \rho_b}
+\end{equation}
+where $d_{ab} = \norm{\vect{c}_a - \vect{c}_b}_2$ is the center distance.
+\end{definition}
+
+\subsection{Hyperedge Formation}
+
+\begin{definition}[2-Edges]
+\begin{equation}
+    E_2 = \{(i, j) : w(H_i, H_j) \geq \theta_2\}, \quad \theta_2 = 5 \times 10^{-5}
+\end{equation}
+\end{definition}
+
+\begin{definition}[3-Edges]
+\begin{equation}
+    E_3 = \{(i, j, k) : \bar{w}_{ijk} \geq 1.5\theta_2\}
+\end{equation}
+where:
+\begin{equation}
+    \bar{w}_{ijk} = \frac{w(H_i, H_j) + w(H_j, H_k) + w(H_i, H_k)}{3}
+\end{equation}
+\end{definition}
+
+\begin{definition}[4-Edges]
+\begin{equation}
+    E_4 = \{(a, b, c, d) : \bar{w}_{abcd} \geq 2\theta_2\}
+\end{equation}
+where:
+\begin{equation}
+    \bar{w}_{abcd} = \frac{1}{6}\sum_{\{p,q\} \subseteq \{a,b,c,d\}} w(H_p, H_q)
+\end{equation}
+\end{definition}
+
+\begin{definition}[Block Hypergraph]
+\begin{equation}
+    \set{G} = (\set{H}, E_2 \cup E_3 \cup E_4)
+\end{equation}
+\end{definition}
+
+%==============================================================================
+\section{Anomaly Scoring}
+%==============================================================================
+
+\subsection{Component Scores}
+
+\begin{definition}[Density Component]
+\begin{equation}
+    S_{\text{density}} = 1 - \min\left(1, \frac{\max_j \rho_j}{\rho_{\text{baseline}}}\right)
+\end{equation}
+where $\rho_{\text{baseline}} = 1.1 \times 10^6$.
+\end{definition}
+
+\begin{definition}[Residual Component]
+\begin{equation}
+    S_{\text{residual}} = \min\left(1, \frac{r_{95}}{0.5}\right)
+\end{equation}
+\end{definition}
+
+\begin{definition}[Tag Component]
+\begin{equation}
+    S_{\text{tags}} = \min\left(1, \frac{\sum_{t \in \text{tags}} \pi(t)}{3}\right)
+\end{equation}
+where $\pi(t)$ is the prior weight for tag $t$.
+\end{definition}
+
+\begin{table}[h]
+\centering
+\begin{tabular}{cc}
+\toprule
+\textbf{Tag} & \textbf{Prior $\pi(t)$} \\
+\midrule
+AML\_ALERT & 0.8 \\
+AML\_RULE & 0.7 \\
+HIGH\_FEE & 0.6 \\
+VOL\_CRUSH & 0.5 \\
+BRIDGE\_ACTIVITY & 0.45 \\
+LENDING\_ACTIVITY & 0.4 \\
+NFT\_ACTIVITY & 0.35 \\
+DEX\_ACTIVITY & 0.3 \\
+\bottomrule
+\end{tabular}
+\caption{Tag prior weights}
+\label{tab:priors}
+\end{table}
+
+\subsection{Composite Anomaly Score}
+
+\begin{theorem}[Anomaly Score]
+The final anomaly score is:
+\begin{equation}
+    S = 0.50 \cdot S_{\text{density}} + 0.35 \cdot S_{\text{residual}} + 0.15 \cdot S_{\text{tags}}
+\end{equation}
+with $S \in [0, 1]$ (clamped).
+\end{theorem}
+
+\textbf{Label Assignment:}
+\begin{equation}
+    \text{Label}(S) = \begin{cases}
+        \text{Rare} & S \geq 0.75 \\
+        \text{Unusual} & 0.45 \leq S < 0.75 \\
+        \text{Typical} & S < 0.45
+    \end{cases}
+\end{equation}
+
+%==============================================================================
+\section{Cryptographic Commitments}
+%==============================================================================
+
+\subsection{BLAKE3 Hash}
+
+All commitments use the BLAKE3 cryptographic hash function:
+\begin{equation}
+    H: \{0,1\}^* \to \{0,1\}^{256}
+\end{equation}
+
+\subsection{Commitment Definitions}
+
+\begin{definition}[Folded Block Commitment]
+\begin{equation}
+    C_{\text{fold}} = H(\text{JSON}(F_B))
+\end{equation}
+\end{definition}
+
+\begin{definition}[PQ Code Commitment]
+\begin{equation}
+    C_{\text{PQ}} = H(\text{JSON}(\{(q_1^{(i)}, \ldots, q_m^{(i)})\}_{i=1}^{|F_B|}))
+\end{equation}
+\end{definition}
+
+\begin{definition}[Codebook Root]
+\begin{equation}
+    C_{\text{codebook}} = H(\text{JSON}(\set{C}, \text{normalization}, \varepsilon))
+\end{equation}
+\end{definition}
+
+%==============================================================================
+\section{Zero-Knowledge Proof System}
+%==============================================================================
+
+\subsection{Public Inputs}
+
+\begin{table}[h]
+\centering
+\begin{tabular}{ll}
+\toprule
+\textbf{Signal} & \textbf{Description} \\
+\midrule
+$\text{prev\_state\_root}$ & State root before block execution \\
+$\text{new\_state\_root}$ & State root after block execution \\
+$\text{block\_height}$ & Block number \\
+$\text{tx\_merkle\_root}$ & Merkle root of transactions \\
+$C_{\text{fold}}$ & Folded block commitment \\
+$C_{\text{PQ}}$ & PQ code commitment \\
+$C_{\text{codebook}}$ & Codebook root \\
+\bottomrule
+\end{tabular}
+\caption{ZK public inputs}
+\label{tab:public-inputs}
+\end{table}
+
+\subsection{Witness Structure}
+
+The ZK witness contains:
+\begin{itemize}
+    \item Full transaction list $\{tx_i\}$
+    \item Execution traces $\{\text{trace}_j\}$
+    \item Witness bundles $\{\text{bundle}_k\}$
+    \item Intermediate folded vectors $F_B$
+    \item PQ indices before hashing
+\end{itemize}
+
+\subsection{Constraint System}
+
+\begin{definition}[State Transition Gadget]
+\begin{equation}
+    \text{Apply}(\text{prev\_state\_root}, \{tx_i\}) = \text{new\_state\_root}
+\end{equation}
+\end{definition}
+
+\begin{definition}[Vectorization Gadget]
+\begin{equation}
+    \forall i: \vect{x}_i = \phi_{tx}(tx_i) \text{ (deterministic)}
+\end{equation}
+\end{definition}
+
+\begin{definition}[Folding Gadget]
+\begin{align}
+    F_B &= \text{Fold}(\{\vect{x}_i, \vect{s}_j, \vect{w}_k\}) \\
+    H(F_B) &= C_{\text{fold}}
+\end{align}
+\end{definition}
+
+\begin{definition}[PQ Gadget]
+\begin{align}
+    \forall \vect{f} \in F_B&: \norm{\vect{f} - \hat{\vect{f}}}_2 \leq \varepsilon \\
+    H(\text{indices}) &= C_{\text{PQ}}
+\end{align}
+\end{definition}
+
+\subsection{Fixed-Point Arithmetic}
+
+\begin{table}[h]
+\centering
+\begin{tabular}{lll}
+\toprule
+\textbf{Stage} & \textbf{Format} & \textbf{Range} \\
+\midrule
+Feature normalization & Q2.14 & $[-4, 4)$ \\
+Statistics & Q8.24 & $[-256, 256)$ \\
+Folding products & Q4.28 & $[-16, 16)$ \\
+PQ error check & Q6.26 & $[0, 64)$ \\
+\bottomrule
+\end{tabular}
+\caption{Fixed-point layouts for circuit arithmetic}
+\label{tab:fixed-point}
+\end{table}
+
+\subsection{Halo2 Implementation}
+
+The proof system uses Halo2 with:
+\begin{itemize}
+    \item \textbf{IPA} (Inner Product Argument) commitment scheme
+    \item \textbf{BN254 curve} for pairing operations
+    \item \textbf{Poseidon hash} for in-circuit commitments
+    \item \textbf{Lookup tables} for range checks and centroid access
+\end{itemize}
+
+%==============================================================================
+\section{Atlas Visualization}
+%==============================================================================
+
+\subsection{2D Projection}
+
+The Atlas projects hotzones to 2D for visualization:
+\begin{equation}
+    \vect{p}_i = \text{Project}(\vect{c}_i) \in \R^2
+\end{equation}
+using PCA or t-SNE dimensionality reduction.
+
+\subsection{Visual Encoding}
+
+\begin{itemize}
+    \item \textbf{Position}: 2D coordinates from projection
+    \item \textbf{Size}: Proportional to $\sqrt{\rho_i}$
+    \item \textbf{Color}: Mapped from dominant semantic tag
+    \item \textbf{Edges}: Hyperedges with $w > \theta$
+\end{itemize}
+
+\subsection{3D Force-Directed Layout}
+
+For the hypergraph visualization:
+\begin{itemize}
+    \item Node positions via force simulation with repulsion
+    \item Edge springs with attraction proportional to $w(H_i, H_j)$
+    \item Node size weighted by density
+\end{itemize}
+
+%==============================================================================
+\section{Summary of Parameters}
+%==============================================================================
+
+\begin{table}[h]
+\centering
+\begin{tabular}{llll}
+\toprule
+\textbf{Parameter} & \textbf{Symbol} & \textbf{Default} & \textbf{Description} \\
+\midrule
+Transaction dim & $d_{tx}$ & 16 & Features per transaction \\
+Fold dim & $d$ & 16 & Canonical vector dimension \\
+Components & $k$ & 4 & Principal directions \\
+PQ subspaces & $m$ & 4 & Codebook partitions \\
+PQ centroids & $K$ & 256 & Centroids per subspace \\
+Error bound & $\varepsilon$ & 0.25 & Max reconstruction error \\
+KDE bandwidth & $h$ & 0.15 & Gaussian kernel width \\
+Density threshold & $\theta$ & 0.02 & Min hotzone density \\
+Max hotzones & --- & 16 & Top-$k$ selection \\
+Hyperedge threshold & $\theta_2$ & $5\times10^{-5}$ & Min edge weight \\
+\bottomrule
+\end{tabular}
+\caption{System parameters}
+\label{tab:params}
+\end{table}
+
+%==============================================================================
+\section*{References}
+%==============================================================================
+
+\begin{enumerate}
+    \item Jégou, H., Douze, M., \& Schmid, C. (2011). Product quantization for nearest neighbor search. \textit{IEEE Transactions on Pattern Analysis and Machine Intelligence}.
+    
+    \item Silverman, B. W. (1986). \textit{Density Estimation for Statistics and Data Analysis}. Chapman \& Hall.
+    
+    \item Electric Coin Company. (2020). The Halo2 proving system. \url{https://zcash.github.io/halo2/}
+    
+    \item O'Connor, J., et al. (2020). BLAKE3: One function, fast everywhere. \url{https://github.com/BLAKE3-team/BLAKE3-specs}
+\end{enumerate}
+
+\end{document}
+
+
+
+
+

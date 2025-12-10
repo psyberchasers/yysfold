@@ -1,16 +1,19 @@
-import { NextResponse } from 'next/server';
-import { listRecentBlockSummaries } from '@/lib/blocks';
+import { NextRequest, NextResponse } from 'next/server';
+import { fetchRecentBlocks } from '@/lib/api';
 
-export async function GET(request: Request) {
+export const dynamic = 'force-dynamic';
+
+export async function GET(request: NextRequest) {
   const { searchParams } = new URL(request.url);
-  const limitParam = Number(searchParams.get('limit') ?? '12');
-  const tagFilter = searchParams.get('tag');
-  const limit = Number.isFinite(limitParam)
-    ? Math.min(Math.max(limitParam, 1), 50)
-    : 12;
+  const limit = parseInt(searchParams.get('limit') ?? '12', 10);
+  const tag = searchParams.get('tag') ?? undefined;
+  const chain = searchParams.get('chain') ?? undefined;
 
-  const blocks = listRecentBlockSummaries(limit, tagFilter ?? undefined);
-
-  return NextResponse.json({ blocks });
+  const data = await fetchRecentBlocks(limit, tag, chain);
+  
+  if (!data) {
+    return NextResponse.json({ blocks: [] });
+  }
+  
+  return NextResponse.json(data);
 }
-
