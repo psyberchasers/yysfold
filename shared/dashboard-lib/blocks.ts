@@ -166,6 +166,12 @@ function normalizeRow(row: BlockSummaryRow): StoredBlockSummary {
 }
 
 function relativeFromArtifacts(target: string) {
+  // Handle paths that already include DATA_DIR (e.g., /data/blocks/...)
+  const dataDir = process.env.DATA_DIR;
+  if (dataDir && target.startsWith(dataDir)) {
+    return path.relative(dataDir, target);
+  }
+  // Handle local dev paths
   const artifactsDir = path.resolve('..', 'artifacts');
   if (target.startsWith(artifactsDir)) {
     return path.relative(artifactsDir, target);
